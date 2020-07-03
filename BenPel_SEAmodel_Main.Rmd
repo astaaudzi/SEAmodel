@@ -18,7 +18,12 @@ rm(list=ls())
 #list.files()
 
 #devtools::install_github("james-thorson/FishLife")
-list.of.packages <- c("tidyverse", "dplyr", "ggplot2", "ggmap", "vegan", "reshape2", "cowplot", "factoextra", "data.table")
+list.of.packages <- c("tidyverse", "dplyr", "ggplot2", "ggmap", "vegan", "reshape2", "cowplot", "factoextra", "data.table", "googleway", "ggrepel", "ggspatial", 
+    "libwgeom", 
+    "sf", 
+    "rnaturalearth", 
+    "rnaturalearthdata",
+    "rgeos")
 
 new.packages<- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
@@ -26,9 +31,9 @@ lapply(list.of.packages, require, character.only = TRUE)
 
 ```
 
-#### ###########
+### ###########
 
-### SETTING UP SPECIES ###
+### SETTING UP SPECIES 
 
 ### Load datafiles: BIG
 
@@ -185,8 +190,8 @@ median(SurvTotal$abunRatio, na.rm = T) #0.91
 
 ```{r warning=FALSE, message=FALSE, eval=T, echo = F}
 
-#load(file="../inputs/rlsbas_mar2019.RData")
-#load(file = "../inputs/ModelSpeciesSummary.RData")
+load(file="../inputs/rlsbas_mar2019.RData")
+load(file = "../inputs/ModelSpeciesSummary.RData")
 
 fish.early.LT.M1 <- rls_bas %>% filter (SiteLat < -40.8) %>% filter (year < 2000) %>% filter (Method == 1)
 length(unique(fish.early.LT.M1$SurveyID)) #1965
@@ -194,9 +199,12 @@ surveys <- unique(fish.early.LT.M1$SurveyID)
 
 SurveyYear <- fish.early.LT.M1 %>% group_by(SurveyID) %>% summarise (year = first(year), spp = n_distinct(TAXONOMIC_NAME))
 
+SurveyYear <- fish.early.LT.M1 %>% group_by(SurveyID) %>% summarise (year = first(year))
+
 ##
 ModelSppAbund <- rls_bas %>% 
   filter (SiteLat < -40.8) %>%
+  filter (year < 2000) %>%
   filter (TAXONOMIC_NAME %in% ModelSpecies$TAXONOMIC_NAME) %>% 
   filter (Method == "1") %>% 
   group_by (TAXONOMIC_NAME, SurveyID) %>% 
@@ -211,6 +219,7 @@ colnames(temp3) <- c("SurveyID","TAXONOMIC_NAME") #column names
 
 #add observed abundance to the relevant rows. Since we use left_join it will keep all entries from temp3, so all survey / species combinations, and leave NA if a species was absent
 SppSurveyAll <- left_join(temp3, ModelSppAbund, by = c("SurveyID","TAXONOMIC_NAME"))
+SppSurveyAll$year <- SurveyYear$year[match(SppSurveyAll$SurveyID, SurveyYear$SurveyID)]
 
 ## check that we have the same number of NAs for biomasses and abundances 
 length(which(is.na(SppSurveyAll$bio16) == TRUE))
@@ -221,11 +230,18 @@ length(which(is.na(SppSurveyAll$abun16) == TRUE))
 SppSurveyAll$bio16[which(is.na(SppSurveyAll$bio16) == TRUE)] <- 0
 SppSurveyAll$abun16[which(is.na(SppSurveyAll$abun16) == TRUE)] <- 0
 
+save(SppSurveyAll, file = "../inputs/SppSurveyLate.RData")
+
 #Now we can calcualte per survey biomass and abundance statistics 
 ModelSppStatistics <- SppSurveyAll %>% group_by(TAXONOMIC_NAME) %>%
   summarise(meanBio = mean(bio16), sdBio = sd(bio16), maxBio = max(bio16), medianBio = median(bio16), meanAbun = mean(abun16), sdAbun = sd(abun16), maxAbun = max(abun16), q90abun = quantile(abun16, probs = 0.9), q80bio = quantile(abun16, probs = 0.8), q70abun = quantile(abun16, probs = 0.70), q60abun = quantile(abun16, probs = 0.60), q50abun = quantile(abun16, probs = 0.50))
 
 #write.csv(ModelSppStatistics, file = "fish.csv")
+
+ModelSppStatisticsYear <- SppSurveyAll %>% group_by(TAXONOMIC_NAME, year) %>%
+  summarise(meanBio = mean(bio16)/500, meanAbun = mean(abun16)/500)
+
+#save(ModelSppStatisticsYear, file = "../outputs/annualBiomVariation.RData")
 
 #NOTE, there is a huge amount of variation in abundance and biomass per survey. For most species median per survey abundance is 0!
 
@@ -302,8 +318,20 @@ MatchNames$sppName <- ModelSpp
 
 ModelSppStatistics$modelName <- MatchNames$modelName[match(ModelSppStatistics$TAXONOMIC_NAME, MatchNames$sppName)]
 
+#Or match names for annual variation analyses
+SppSurveyAll$modelName <- MatchNames$modelName[match(SppSurveyAll$TAXONOMIC_NAME, MatchNames$sppName)]
+
+
+ModelSppStatisticsYear <- SppSurveyAll %>% group_by(modelName, year) %>%
+  summarise(meanBio = mean(bio16)/500, meanAbun = mean(abun16)/500)
+
+#save(ModelSppStatisticsYear, file = "../outputs/annualBiomVariationLate.RData")
+
 #Model species summary
 ModelSummaryFinal <- ModelSppStatistics %>% group_by(modelName) %>% summarise(meanAb = mean(meanAbun), sdAb = mean(sdAbun), maxAb = mean(maxAbun), meanBio = mean(meanBio), sdBio = mean(sdBio), maxBio = mean(maxBio))
+
+#Annual Model species summary
+ModelSpeciesAnnualVariation <- ModelSppStatisticsYear %>% group_by(modelName) %>% summarise(meanAb = mean(meanAbun), sdAb = mean(sdAbun), maxAb = mean(maxAbun), meanBio = mean(meanBio), sdBio = mean(sdBio), maxBio = mean(maxBio))
 
 load(file = "../inputs/meanAbundBefore2000.RData")
 
@@ -999,19 +1027,61 @@ empSizesMariaMPA <-empSizes
 save(empSizesMariaMPA, file = "../inputs/empSizesMarMPA.RData")
 
 
-
-
-
-
 ```
 
 
 ### Fig1: map: TODO
 
 ```{r}
-rls_aus_geo <- main_data %>% 
-    group_by(geogroup) %>% 
-      summarise (location = first(Location), latt = round(mean(SiteLat),3), long = round(mean(SiteLong),3), year = n_distinct(year), surveys = n_distinct(SurveyID), locatnum = n_distinct(Location), anntemp = mean(meansst), species = n_distinct(TAXONOMIC_NAME), gdd = mean(scaledGDD)) 
+model_locs <- rls_bas %>% 
+  filter (Location %in% LocationsWanted) %>%
+  filter (SiteLat < -40.8) %>% 
+  #filter (year < 2000) %>% 
+  #filter (Method == 1) %>%
+   group_by(SiteCode) %>% 
+      summarise (latt = round(mean(SiteLat),3), long = round(mean(SiteLong),3), year = n_distinct(year), surveys = n_distinct(SurveyID)) 
+
+theme_set(theme_bw())
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+#class(world)
+#WHere are we centering? 
+#center_tas <- c(-41.4545, 145.9707)
+
+ggplot(data = world) +
+  geom_sf(col="black", fill="lightgrey") +
+  coord_sf(xlim = c(110, 160), ylim = c(-11, -45), expand = FALSE) + 
+  geom_rect(mapping=aes(xmin=143, xmax=151, ymin=-39.5, ymax=-44.5), color="black", alpha=0) +
+  theme_void()
+
+
+
+ggplot(data = world) +
+  geom_sf(col="black", fill="lightgrey") +
+  coord_sf(xlim = c(143, 151), ylim = c(-39.5, -44.5), expand = FALSE) +
+  #geom_point(aes(x = c(142, 144), y = c(-42, -41)), size = 1)
+  geom_rect(mapping=aes(xmin=146.5, xmax=148.5, ymin=-41.2, ymax=-43.65, fill = "orange"), color="orange", alpha=0.0075) +
+  geom_point(aes(x = model_locs$long, y = model_locs$latt), data = model_locs, size = (model_locs$surveys/100), colour = 'red') +
+  geom_text(x=149.2, y=-41.7, label= "Bicheno", size = 4, fontface = 3) + 
+  geom_text(x=149.4, y=-42.6, label= "Maria Island", size = 4, fontface = 3) + 
+  geom_text(x=149.3, y=-43.4, label= "Ninepin & Tinderbox", size = 4, fontface = 3) + 
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text=element_text(size=10), 
+    legend.position = "none"
+  )
+
+#+
+#  theme_void()
+
+###
+geom_point(aes(x = rls_aus_geo$long, y = rls_aus_geo$latt), data = rls_aus_geo, size = (rls_aus_geo$species/30), color = rls_aus_geo$color)
+
+
 
 ## Now plot the geographic groups but the colour of the dot reflects the mean geosite temperature
 rls_aus_geo$tempF <- floor(rls_aus_geo$anntemp) #round the annual SST to the nearest degree 
@@ -1025,42 +1095,6 @@ rls_aus_geo$color <- colvector$col[match(rls_aus_geo$tempF, colvector$tempF)]
 
 #load long term location coordinates
 load(file = "inputs/longLoc.RData")
-
-### code from Freddie 
-
-list.of.packages <- 
-  c("tidyverse",
-    "cowplot", 
-    "googleway", 
-    "ggrepel", 
-    "ggspatial", 
-    "libwgeom", 
-    "sf", 
-    "rnaturalearth", 
-    "rnaturalearthdata",
-    "rgeos"
-  )
-
-new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
-if(length(new.packages)) install.packages(new.packages, dependencies = T)
-lapply(list.of.packages, require, character.only = T)
-rm(list.of.packages, new.packages)
-
-theme_set(theme_bw())
-
-world <- ne_countries(scale = "medium", returnclass = "sf")
-class(world)
-
-#WHere are we centering? 
-#center_tas <- c(-41.4545, 145.9707)
-
-ggplot(data = world) +
-  geom_sf(col="blue", fill="green") +
-  coord_sf(xlim = c(140, 155), ylim = c(-35.5, -50), expand = FALSE) +
-  geom_point(aes(x = 147, y = -42), size = 1) +
-  theme_void()
-###
-
 
 
 
@@ -1087,9 +1121,9 @@ rgdal::readOGR(dsn = ".", "aust_cd66states") %>%
 ```
 
 
-#### ###########
+### ###########
 
-### MODEL SETUP ###
+### MODEL SETUP 
 
 ### Install mizer, load libraries 
 
@@ -1990,7 +2024,7 @@ save(stable_alg, file = paste("../modelParams/naa_", runname, ".RData", sep = ""
 ```{r warning=FALSE, message=FALSE, echo=T}
 
 ### setup 
-params <- mizerRewire::MizerParams(mariaParams, interaction = inter, no_w = no_size_groups, kappa = kappa, lambda = lambda, min_w_pp = min_w_pp, w_pp_cutoff = w_pp_cutoff, r_pp = r_pp, kappa_ben = kappa_ben, lambda_ben = lambda_ben, w_bb_cutoff = w_bb_cutoff, r_bb = r_bb, min_w_bb = min_w_bb, kappa_alg = kappa_alg, lambda_alg = lambda_alg, w_aa_cutoff = w_aa_cutoff, r_aa = r_aa, min_w_aa = min_w_aa, store_kernel = T)
+params <- mizerRewire::MizerParams(mariaParams, interaction = inter, no_w = no_size_groups, kappa = kappa, lambda = lambda, min_w_pp = min_w_pp, w_pp_cutoff = w_pp_cutoff, r_pp = r_pp, kappa_ben = kappa_ben, lambda_ben = lambda_ben, w_bb_cutoff = w_bb_cutoff, r_bb = r_bb, min_w_bb = min_w_bb, kappa_alg = kappa_alg, lambda_alg = lambda_alg, w_aa_cutoff = w_aa_cutoff, r_aa = r_aa, min_w_aa = min_w_aa, store_kernel = F)
 
 #update initial abundances to correspond to mean abundance per m2 observed
 #params@initial_n <- (params@initial_n/mariaParams$initScalar)
@@ -2003,7 +2037,7 @@ params@mu_b <- params@mu_b + sen_mort(mariaParams, params, k.sm, xsw, sen.e) #+ 
 
 ## setup run time 
 tmax = 150
-tasm1 <- mizerRewire::project(params, t_max = tmax, effort= 0, dt = dt, diet_steps = 2)
+tasm1 <- mizerRewire::project(params, t_max = tmax, effort= 0, dt = dt, diet_steps = 0)
 plot(tasm1)
 
 #getBiomass(tasm1)[tmax,]
@@ -2181,7 +2215,7 @@ tmax = 200
 yield_final <- data.frame()
 eff_vector1 = seq(from = 0.01, to = 0.09, by = 0.01)
 eff_vector2 = seq(from = 0.1, to = 0.2, by = 0.02)
-eff_vector3 = seq(from = 0.25, to = 0.7, by = 0.05)
+eff_vector3 = seq(from = 0.25, to = 0.95, by = 0.05)
 eff_vector = c(eff_vector1, eff_vector2, eff_vector3)
 
 for (i in 1:length(eff_vector)) {
@@ -2213,7 +2247,7 @@ for (i in 1:length(eff_vector)) {
   
 }   
 
-save(yield_final, file = "../outputs/yield001to07.RData")
+#save(yield_final, file = "../outputs/yield001to095.RData")
 ```
 
 something does not work here, need to check:
@@ -2225,7 +2259,7 @@ load(file = "../outputs/yield001to07_lessDD.RData")
 #test <- yield_final[-c(4001:4250),] #0.2 mort was used two times so remove some rows
 #test2 <- test[-c(2251:2500),]
 
-oneeffort <- yield_final %>% filter (fishing == 0.2) ## decide which fishign level to use
+oneeffort <- yield_final %>% filter (fishing == 0.9) ## decide which fishign level to use
 par(mfrow = c(4,5), mar = c(1,1,1,1))
 
 for (i in 1:length(mariaParams$species)) {
@@ -2247,6 +2281,7 @@ MaxYield <- list()
 MaxYield$fmsy <- as.vector(fmsy)
 MaxYield$species <- as.character(mariaParams$species)
 MaxYield$erepro <- round(mariaParams$erepro,3)
+MaxYield$sensitivity <- as.character(mariaParams$sensitivity)
 MaxYield <- as.data.frame(MaxYield)
 
 write.csv(MaxYield, file = "../outputs/Fmsy.csv")
