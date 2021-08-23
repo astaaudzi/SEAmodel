@@ -13,7 +13,7 @@ source("standard_mizer/setup.R")
 # GWD: We have to make some changes to Asta's species parameter file:
 # - Change in names of resource interaction parameters
 # - Absorb the growth efficiency into the existing parameters
-load(file = "../modelParams/mariaParamsMs.RData") #species parameter file 
+load(file = "modelParams/mariaParamsMs.RData") #species parameter file 
 mariaParams <- mariaParams %>% 
     rename(interaction_resource = avail_PP,
            interaction_aa = avail_AA,
@@ -27,30 +27,30 @@ mariaParams <- mariaParams %>%
 mariaParams$w_mat25 <- mariaParams$w_mat/3^(1/5)
 
 # We load interaction matrix and add rownames
-load(file = "../modelParams/inter_N19.RData")
+load(file = "modelParams/inter_N19.RData")
 dimnames(inter)[[1]] <- dimnames(inter)[[2]]
 
 # Load initial values
-load(file = "../modelParams/naa_N19.RData")
-load(file = "../modelParams/nbb_N19.RData")
-load(file = "../modelParams/abund_N19.RData")
-load(file = "../modelParams/npp_N19.RData")
+load(file = "modelParams/naa_N19.RData")
+load(file = "modelParams/nbb_N19.RData")
+load(file = "modelParams/abund_N19.RData")
+load(file = "modelParams/npp_N19.RData")
 
 # Make a rund with the base scenario just to check that things are working
-# 
-# params <- newAstaParams(mariaParams, interaction = inter,
-#                         stable_abund = stable_abund,
-#                         stable_pl = stable_pl,
-#                         stable_ben = stable_ben,
-#                         stable_alg = stable_alg)
-# 
-# tasm1 <- project(params, t_max = 10, effort = 0, dt = 0.2)
-# plot(tasm1)
+
+params <- newAstaParams(mariaParams, interaction = inter,
+                        stable_abund = stable_abund,
+                        stable_pl = stable_pl,
+                        stable_ben = stable_ben,
+                        stable_alg = stable_alg)
+
+tasm1 <- project(params, t_max = 10, effort = 0, dt = 0.2)
+plot(tasm1)
 
 
 ### Load scenarios ----
 
-load(file = "../modelParams/params28ms.RData")
+load(file = "modelParams/params28ms.RData")
 accepted1 <- as.data.frame(params28)
 
 # List of seven productivity scenarios. Each of them will be run 4 times: with
@@ -330,4 +330,4 @@ save(CommSlopePlan_all, file = "outputs/CommSlopePlan.RData")
 save(CommSlopeHerb_all, file = "outputs/CommSlopeHerb.RData")
 save(CommSlopePred_all, file = "outputs/CommSlopePred.RData")
 
-#saveRDS(foodWebStats, file = "../altRuns28/foodwebstats.rds")
+#saveRDS(foodWebStats, file = "altRuns28/foodwebstats.rds")
