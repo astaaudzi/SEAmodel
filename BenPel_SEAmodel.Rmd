@@ -196,13 +196,13 @@ newAstaParams <- function(sp, interaction,
 
 ```
 
-### Run basic model with standard mizer
+### Baseline run with standard mizer
 
-previously runs were done with mizer rewiring. 
-
+Previously runs were done with mizer rewiring fork. 
 To adapt them to standar mizer we adjust a few parameters. 
 
 First, Tasmanian model follows DEB and optimal allocation models and assumes a cost of growth, i.e. growth inefficiency. This means that in addition to assimilation efficiency parameter (0.6), converting net energy to growth also incurs growth cost. Such growth cost is most sensible in two pool models (e.g. Audzijonyte & Richards, 2018) where allocation to growth incurs costs while allocation to reserve does not. In standard mizer, which only tracks total weight this is now incorporated in other parameters. 
+We also update reproductive allocation function 
 
 ```{r}
 # The code is mostly copied from the "Actual scenario runs" section of
@@ -249,10 +249,13 @@ params <- newAstaParams(mariaParams, interaction = inter,
                         stable_alg = stable_alg)
 
 tasm1 <- project(params, t_max = 10, effort = 0, dt = 0.2)
+
 plot(tasm1)
 plotSpectra(tasm1)
 
 ```
+
+### Run climate scenarios
 
 ```{r}
 
@@ -274,26 +277,26 @@ fish.mort.v <-  c(0.15, 0.15, 0, 0.1, 0.15, 0.1, 0.15, 0.1, 0.1, 0.15, 0.15,
 
 
 prod_scen<-list( 
-    "baseline_12_f0"=       c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0), 
-    "more_plankt_12_f0"=    c("kappa" =2.6, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0), 
-    "less_plankt_12_f0"=    c("kappa" =1.5, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0), 
-    "small_plankt_12_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.18, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0), 
-    "large_plankt_12_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.12, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0), 
-    "more_benth_12_f0"=     c("kappa" =2, "kappa_ben"=9, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0), 
-    "less_benth_12_f0"=     c("kappa" =2, "kappa_ben"=4, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0), 
-    "small_benth_12_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=2.0, "temp" = 12, "fmort" = fish.mort.0),
-    "large_benth_12_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.8, "temp" = 12, "fmort" = fish.mort.0),
-    
-    "baseline_14_f0"=       c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0), 
-    "more_plankt_14_f0"=    c("kappa" =2.6, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0), 
-    "less_plankt_14_f0"=    c("kappa" =1.5, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0), 
-    "small_plankt_14_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.18, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0), 
-    "large_plankt_14_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.12, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0), 
-    "more_benth_14_f0"=     c("kappa" =2, "kappa_ben"=9, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0), 
-    "less_benth_14_f0"=     c("kappa" =2, "kappa_ben"=4, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0), 
-    "small_benth_14_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=2.0, "temp" = 14.5, "fmort" = fish.mort.0), 
-    "large_benth_14_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.8, "temp" = 14.5, "fmort" = fish.mort.0), 
-    
+    # "baseline_12_f0"=       c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0), 
+    # "more_plankt_12_f0"=    c("kappa" =2.6, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0), 
+    # "less_plankt_12_f0"=    c("kappa" =1.5, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0), 
+    # "small_plankt_12_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.18, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0), 
+    # "large_plankt_12_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.12, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0), 
+    # "more_benth_12_f0"=     c("kappa" =2, "kappa_ben"=9, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0), 
+    # "less_benth_12_f0"=     c("kappa" =2, "kappa_ben"=4, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0), 
+    # "small_benth_12_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=2.0, "temp" = 12, "fmort" = fish.mort.0),
+    # "large_benth_12_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.8, "temp" = 12, "fmort" = fish.mort.0),
+    # 
+    # "baseline_14_f0"=       c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0), 
+    # "more_plankt_14_f0"=    c("kappa" =2.6, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0), 
+    # "less_plankt_14_f0"=    c("kappa" =1.5, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0), 
+    # "small_plankt_14_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.18, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0), 
+    # "large_plankt_14_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.12, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0), 
+    # "more_benth_14_f0"=     c("kappa" =2, "kappa_ben"=9, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0), 
+    # "less_benth_14_f0"=     c("kappa" =2, "kappa_ben"=4, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0), 
+    # "small_benth_14_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=2.0, "temp" = 14.5, "fmort" = fish.mort.0), 
+    # "large_benth_14_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.8, "temp" = 14.5, "fmort" = fish.mort.0), 
+    # 
     "baseline_12_f2"=       c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.v), 
     "more_plankt_12_f2"=    c("kappa" =2.6, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.v), 
     "less_plankt_12_f2"=    c("kappa" =1.5, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.v), 
@@ -495,6 +498,18 @@ for (scen in 1:scen_num) {
         #get mean values of various statistics over the last 30 years and save them in arrays 
         ttemp <- tasm1@n_pp[c((tmax-29):tmax),which(params@w_full > min_w_pp & params@w_full < w_pp_cutoff)]
         plankt_all[scen,,iter] <- apply(ttemp, 2, mean)
+        
+        ## AA: sep20
+        ttemp <- tasm1@n_pp[c((tmax-29):tmax),which(params@w_full > min_w_pp & params@w_full < w_pp_cutoff)]
+  plankt_all_sc6[,iter] <- apply(ttemp, 2, mean)
+  ttemp <- tasm1@n_bb[c((tmax-29):tmax),which(params@w_full > min_w_bb & params@w_full < w_bb_cutoff)]
+  bent_all_sc6[,iter] <- apply(ttemp, 2, mean)
+  ttemp <- tasm1@n_aa[c((tmax-29):tmax),which(params@w_full > min_w_aa & params@w_full < w_aa_cutoff)]
+  alg_all_sc6[,iter] <- apply(ttemp, 2, mean)
+  
+        
+        
+        
         
         # GWD changes to next 4 lines because extra resources are saved differently
         ttemp <- Reduce("+", tasm1@n_other[(tmax-29):tmax, "bb"])[which(params@w_full > min_w_bb & params@w_full < w_bb_cutoff)]
