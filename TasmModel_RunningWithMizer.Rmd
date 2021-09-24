@@ -1,0 +1,1104 @@
+---
+title: "SEA_bentPelModel"
+author: "Asta Audzijonyte et al."
+date: "7 November 2019"
+output: html_document
+---
+
+This code shows how to run the Tasmanian model with standard mizer, using add-ons for multiple resources (mizerMR), starvation (mizerStarvation) and some experimental features (mizerExperimental). 
+It is recommended to use standard mizer for all model runs, because this package is being maintained and developed, whereas mizerRewire was just a temporary project to get multiple background resources and temperature dependent rates. Now that multiple resources are available through mizerMR, mizerRewire is not needed. 
+
+!! NB !! 
+There has been a small change in how predation kernel is calculated in mizer (ref to the blog post or issue?). Therefore for some parameter combinations, under scenarios with low resource levels, model runs give different outcomes for most sensitive species (urchins). This is because under these parameter combinations urchins rely on the smallest resource range, and this is where predation kernel calculation changed. Currently mizer truncates predation kernel at 3 sigma values, whereas this was not the case in earlier mizer from which mizerRewire was developed. This discrepancy highlights that even small changes in predation kernel can have an impact on model outcomes under some model parameterisations, that using just one set of model parameters is a risky strategy, and that ideally one should use a range of alternative parameters to explore model outcomes. 
+
+### clear memory
+
+```{r}
+
+rm(list=ls())
+
+```
+
+### Install mizer, load libraries 
+
+For this model we are using an extended version of mizer which includes some experimental features
+See https://github.com/sizespectrum/mizerExperimental
+Standard mizer does not have starvation mortality included. This model uses starvation
+https://github.com/sizespectrum/mizerStarvation
+
+And finally a critical aspect of this model is multiple background resources, now implemented in mizerMR
+https://github.com/sizespectrum/mizerMR
+
+
+```{r warning=F, message=FALSE, echo=T}
+#rm(list=ls())
+
+library(mizer)
+# remotes::install_github("sizespectrum/mizerExperimental")
+# remotes::install_github("sizespectrum/mizerStarvation")
+# remotes::install_github("sizespectrum/mizerMR")
+library(tidyverse)
+library(mizerExperimental)
+library(mizerStarvation)
+library(mizerMR)
+
+```
+
+### Background spectra
+
+Number of size groups and timestep (dt) used in model runs can also make a difference in some parameter combinations. This is because the system settles into an oscilating equilibrium, and using different timesteps samples different oscillation phases. 
+
+```{r warning=T, message=FALSE, echo=T}
+
+#number of size groups 
+no_size_groups = 200
+#timestep used in the integration 
+dt = 0.2
+
+## resource params
+kappa = 2#1 #2 # 20 # 20 # intercept assuming g/m2
+lambda = 2.15 #2.1 # 
+w_pp_cutoff = 1 #g
+r_pp = 1 #2 # rate of regeneration
+min_w_pp = 1e-10 #g
+
+kappa_ben = 6 #2 #8#4 # 8 #80 #80 # intercept assuming g/m2  
+lambda_ben = 1.9 # 1.85 #this slope does not include urchins and lobsters
+w_bb_cutoff = 5 #
+r_bb = 1 # 1.5 # something to be calibrated. Default mizer option is 10
+min_w_bb = 0.001 # 0.01
+
+kappa_alg = 16#8 # 100 # 100 #intercept assuming g/m2
+lambda_alg = 1.6 #slope is much more shallow, to allow for lots of large kelp, but size structure does not really make much sense here
+w_aa_cutoff = 50 
+r_aa = 2 #1 #something to be calibrated
+min_w_aa = 0.001
+
+```
+
+### setup to allow mizer to run with the Tasmanian model
+
+ In this file we are setting up the functions for
+ - the dynamics of the resources
+ - the contribution of the resources to the encounter rate
+ - the senescence mortality
+ and provide a function for setting up Tasmanian model with  benthos and algae.
+
+TODO - make initial abundance setup more flexibly?? 
+
+```{r, eval = T, echo = F}
+#
+# This file is sourced by the file run.R that runs the 
+# climate change scenarios
+
+#parameters for senescence mortality as used in Law et al. 2009
+k.sm <- 0.1 # mortality per year at the threshold size (should be 0.5 originally)
+xsw <- 0.95 # proportion of w_inf at which mortality is at k.sm (should be 0.9)
+sen.e <- 3  # exponent of the senescence mortality (larger value will give 
+# steeper increase in the last few sizes) (should be 3)
+
+sen_mort <- function(sppParams, params, k.sm, xsw, sen.e) {
+    sen.mort.m = array(0, dim = c(length(sppParams$species),length(params@dw)))
+    for (i in 1:length(sppParams$species)) {
+        mu_Sen = k.sm * 10^(sen.e*(log(params@w) - log(xsw*sppParams$w_inf[i])))
+        sen.mort.m[i,] <- mu_Sen    
+    }
+    # For really small species, like Trachinops, Pictilabrus and urchins 
+    # predation mortality will be so high that senescence mortality is unlikely 
+    # to be the case and perhaps should not even be applied
+    sen.mort.m[which(params@species_params$w_inf < 400),] <- 0
+    return(sen.mort.m)
+}
+
+newTasmanianParams <- function(sp, interaction, 
+                          temperature = 12,
+                          Ea = 0.63,
+                          t_ref = 12,
+                          no_w = 200, 
+                          kappa = 2,
+                          lambda = 2.15,
+                          kappa_ben = 6, 
+                          lambda_ben = 1.9,
+                          stable_abund,
+                          stable_pl,
+                          stable_ben,
+                          stable_alg) {
+    # temperature factor
+    temperature <- temperature + 273 # converting to Kelvin from Celsius
+    t_ref <- t_ref + 273
+    temperatureScalar <- exp(-Ea / 8.617332e-5 * (1/temperature - 1/t_ref))
+    
+    # We rescale rates. Mortality is rescaled further down
+    sp$ks <- sp$ks * temperatureScalar
+    sp$h <- sp$h * temperatureScalar
+    sp$gamma <- sp$gamma * temperatureScalar
+    
+    # We are choosing the smallest plankton size to agree with what Asta's
+    # setup function produces
+    min_w_pp <- 0.95e-10
+    
+    params <- newMultispeciesParams(
+        sp, interaction = interaction, no_w = no_w, min_w_pp = min_w_pp,
+        n = 2/3)
+    
+    # Add starvation mortality with default parameter
+    params <- setStarvation(params)
+    
+    # Add senescence mortality and rescale with temperature factor 
+    z0 <- getExtMort(params) + 
+        sen_mort(mariaParams, params, k.sm, xsw, sen.e)
+    params <- setExtMort(params, z0 = z0 * temperatureScalar)
+    
+    # Set up resources
+    resource_params(params) <- data.frame(
+        resource = c("pl", "aa", "bb"),
+        lambda = c(lambda, lambda_alg, lambda_ben),
+        kappa = c(kappa, kappa_alg, kappa_ben),
+        r_pp = c(r_pp, r_aa, r_bb),
+        w_min = c(NA, min_w_aa, min_w_bb),
+        w_max = c(w_pp_cutoff, w_aa_cutoff, w_bb_cutoff)
+    )
+    resource_interaction(params)[, 1] <- sp$avail_PP
+    resource_interaction(params)[, 2] <- sp$avail_AA
+    resource_interaction(params)[, 3] <- sp$avail_BB
+    
+    # Update initial abundances 
+    initialN(params) <- stable_abund
+    initialNResource(params)[1, ] <- stable_pl
+    initialNResource(params)[2, ] <- stable_alg
+    initialNResource(params)[3, ] <- stable_ben
+    
+    params
+}
+
+```
+
+### Load params and update for standard mizer
+
+Previously runs were done with mizer rewiring fork. 
+To adapt them to standar mizer we adjust a few parameters. 
+
+First, Tasmanian model follows DEB and optimal allocation models and assumes a cost of growth, i.e. growth inefficiency. This means that in addition to assimilation efficiency parameter (0.6), converting net energy to growth also incurs growth cost. Such growth cost is most sensible in two pool models (e.g. Audzijonyte & Richards, 2018) where allocation to growth incurs costs while allocation to reserve does not. In standard mizer, which only tracks total weight this is now incorporated in other parameters. 
+We also update reproductive allocation function 
+
+```{r}
+# The code is mostly copied from the "Actual scenario runs" section of
+# Asta's "BenPel_SEAmodel_dbV2.Rmd" file, just slightly adjusted to run
+# with standard mizer. Places where I made importantchanges are marked with 
+# comments starting with GWD
+
+# Species params ----
+load(file = "modelParams/mariaParamsMs.RData") #species parameter file 
+
+# We load interaction matrix and add rownames
+load(file = "modelParams/inter_N19.RData")
+dimnames(inter)[[1]] <- dimnames(inter)[[2]]
+
+# Load initial values
+load(file = "modelParams/naa_N19.RData")
+load(file = "modelParams/nbb_N19.RData")
+load(file = "modelParams/abund_N19.RData")
+load(file = "modelParams/npp_N19.RData")
+## data for invertebrate abundances
+load(file = "modelParams/BenticInvAbund_Tasm.RData")
+
+
+# GWD: We have to make some changes to Asta's species parameter file
+# to absorb the growth efficiency into the existing parameters
+# Growth inefficiency is assumed in the mod
+
+mariaParams <- mariaParams %>% 
+    # get rid of separate growth efficiency
+    mutate(alpha = alpha * alpha_g,
+           ks = ks * alpha_g,
+           erepro = erepro / alpha_g)
+
+# GWD: We change the maturity curve to correspond to an exponent u = 5 
+mariaParams$w_mat25 <- mariaParams$w_mat/3^(1/5)
+
+# Make a run with the base scenario just to check that things are working
+params <- newTasmanianParams(mariaParams, interaction = inter,
+                        stable_abund = stable_abund,
+                        stable_pl = stable_pl,
+                        stable_ben = stable_ben,
+                        stable_alg = stable_alg)
+
+
+```
+
+### Baseline run
+
+```{r}
+tmax  = 100
+dt = 0.2
+
+#first run without fishig. We start with stable abundances so biomass lines should be straight
+tasm1 <- project(params, t_max = tmax, effort = 0, dt = dt)
+
+plot(tasm1)
+
+plotSpectra(tasm1)
+
+
+## some general statistics 
+# final relative biomass was tuned to be within 20% of the observed average scaled biomass
+ relbio <- (getBiomass(tasm1)[tmax,]/max(getBiomass(tasm1)[tmax,]))/mariaParams$scaledBio
+ round (relbio,3)
+ 
+# 
+ obsInvAb <- sum(InvData$meanAb[which(InvData$wgt > min_w_bb & InvData$wgt < w_bb_cutoff)])
+### ASK!! 
+  tasm1@n_other["bb"]
+ modelInvAb <- sum(tasm1@n_bb[tmax,]*params@dw_full)
+# #ratio of model vs observed inv abundances (benthic spectrum) in the relevant range
+# modelInvAb/obsInvAb
+
+
+## Now run with stable low fishing values used in the model (Table 1)
+ fish.mort.spp <- c(0.15, 0.15, 0, 0.1, 0.15, 0.1, 0.15, 0.1, 0.1, 0.15, 0.15, 
+                  0.15, 0.15, 0.15, 0.1, 0.15, 0.15)
+
+ #make sure any fishing mortality changes are done to params object and not species params 
+gear_params(params)$catchability <- fish.mort.spp
+
+tasm1ef <- project(params, t_max = 20, effort=3, dt = dt) 
+
+plot(tasm1ef)
+
+#how much have the average biomasses changed compared to the unfished level? 
+getBiomass(tasm1ef)[mean((tmax-10):tmax),]/getBiomass(tasm1)[tmax,]
+
+```
+
+
+ASK! 
+get diet 
+get Fmsy
+get growth curves
+get reproduction level 
+check depletion level of background resource 
+
+
+### fun new mizer features
+
+```{r}
+
+species_params(params)$biomass_observed <- mariaParams$BioM2
+species_params(params)$biomass_cutoff <- mariaParams$a * 2 ^ mariaParams$b
+
+plotBiomassObservedVsModel(params)
+plotlyFeedingLevel(tasm1, include_critical = T, species = 6)
+getReproductionLevel(params)
+
+getProportionOfLargeFish(tasm1)[tmax]
+
+getProportionOfLargeFish(tasm1, biomass_proportion = F)[tmax]
+
+getProportionOfLargeFish(tasm1, threshold_l = 10, biomass_proportion = F)[tmax]
+
+animateSpectra(tasm1ef)
+
+animateSpectra(tasm1ef, power = 2)
+
+getCriticalFeedingLevel(params)
+
+plotFeedingLevel(tasm1, include_critical = T)
+
+feedlev <- getFeedingLevel(tasm1, species = "Notolabrus")
+
+#set fishing
+fish.mort.spp <- c(0.15, 0.15, 0, 0.1, 0.15, 0.1, 0.15, 0.1, 0.1, 0.15, 0.15, 
+                  0.15, 0.15, 0.15, 0.1, 0.15, 0.15)
+gear_params(paramsNew)$catchability <- fish.mort.spp
+initial_effort(paramsNew) <- 1
+
+## now - magic calibration
+p <- steady(paramsNew)
+plotSpectra(p)
+sim1 <- project(p, t_max = 100)
+plot(sim1)
+plotBiomass(sim1)
+round(p@species_params$erepro,3)
+
+
+
+p <- calibrateBiomass(p)
+plotSpectra(p)
+p <- tuneGrowth(p)
+
+plotlyBiomassObservedVsModel(p)
+p <- matchBiomasses(p)
+sim <- steady(p, return_sim = TRUE)
+plotBiomass(sim)
+
+
+
+ initial_effort(params) <- 1
+
+plotYieldVsF(params, "L_forsteri")
+
+load(file = "../outputs/yield001to095.RData")
+
+getReproductionLevel(getParams(tasm1))
+
+params2 <- setBevertonHolt(params, reproduction_level = c("L_forsteri" = 0.6))
+
+
+p <- tuneParams(p, tabs = c("Spectra", "Growth", "Repro", "Catch", "Diet", "Death", "Rates",
+     "Sim"), controls = c("abundance", "predation", "fishing", "reproduction", "other")
+ )
+
+
+
+
+```
+
+
+### Growth curves    
+
+Plot and check individual growth curves. Note that the reference curves are based on vb_k and Linf, and vb_k is a highly uncertain parameter for many species. So black refrence curves are not good in many species. 
+
+```{r warning=FALSE, message=FALSE, echo=T}
+tasm1 <- tasm1
+
+#All species
+plotGrowthCurves(tasm1, percentage = T)
+
+plotDietMR(tasm1)
+
+
+#Individual species 
+plotGrowthCurves(tasm1, species = params@species_params$species[3], max_age = 10, percentage = F)
+
+max_age = c(15, 20, 10, 10, 10, 6, 80, 40, 5, 20, 10, 15, 10, 10, 20, 10, 20)
+
+par(mfrow = c(4,5))
+
+## growth curves
+for (i in 1:17) {
+  
+  plotGrowthCurves(tasm1, species = params@species_params$species[i], max_age = max_age[i], percentage = F)
+
+}
+
+```
+
+
+### Run climate scenarios 
+
+!! NB - we start with initial stable conditions of the baseline scenario (no fishing, no resource change, no temperature change) and first parameter set. For each new parameter set the system will change somewhat to settle into a new equilibrium. However, due to small changes in predation kernel estimation in early mizer and therefore mizerRewire and current mizer (see above), some parameter combinations give slight differences in final species biomasses. This is mostly pronounced in a highly sensitive species - urchins. 
+
+Note, than when fishing is applied, the system in most cases becomes oscillating. This is something that is worth exploring in the future. Under what conditions this happens, what are the properties? 
+
+```{r}
+
+# In this file we are running the climate change scenarios
+### Load scenarios ----
+
+load(file = "modelParams/params28ms.RData")
+accepted1 <- as.data.frame(params28)
+
+# List of seven productivity scenarios. Each of them will be run 4 times: with
+# and without fishing, with and without heating. Note, I used very approximate
+# array of fishing mortality (shown below). This can be updated
+
+#if no fishing is applied 
+fish.mort.0 <- rep(0, times = 17)
+#a vector of low fishing mortalities
+fish.mort.v <-  c(0.15, 0.15, 0, 0.1, 0.15, 0.1, 0.15, 0.1, 0.1, 0.15, 0.15, 
+                  0.15, 0.15, 0.15, 0.1, 0.15, 0.15)
+
+prod_scen<-list( 
+     "baseline_12_f0"=       c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
+     "more_plankt_12_f0"=    c("kappa" =2.6, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
+     "less_plankt_12_f0"=    c("kappa" =1.5, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
+     "small_plankt_12_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.18, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
+     "large_plankt_12_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.12, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
+     "more_benth_12_f0"=     c("kappa" =2, "kappa_ben"=9, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
+     "less_benth_12_f0"=     c("kappa" =2, "kappa_ben"=4, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
+     "small_benth_12_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=2.0, "temp" = 12, "fmort" = fish.mort.0),
+     "large_benth_12_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.8, "temp" = 12, "fmort" = fish.mort.0),
+    
+     "baseline_14_f0"=       c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
+     "more_plankt_14_f0"=    c("kappa" =2.6, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
+     "less_plankt_14_f0"=    c("kappa" =1.5, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
+     "small_plankt_14_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.18, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
+     "large_plankt_14_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.12, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
+     "more_benth_14_f0"=     c("kappa" =2, "kappa_ben"=9, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
+     "less_benth_14_f0"=     c("kappa" =2, "kappa_ben"=4, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
+     "small_benth_14_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=2.0, "temp" = 14.5, "fmort" = fish.mort.0),
+     "large_benth_14_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.8, "temp" = 14.5, "fmort" = fish.mort.0),
+    
+    "baseline_12_f2"=       c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.v),
+    "more_plankt_12_f2"=    c("kappa" =2.6, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.v), 
+    "less_plankt_12_f2"=    c("kappa" =1.5, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.v), 
+    "small_plankt_12_f2"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.18, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.v), 
+    "large_plankt_12_f2"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.12, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.v), 
+    "more_benth_12_f2"=     c("kappa" =2, "kappa_ben"=9, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.v), 
+    "less_benth_12_f2"=     c("kappa" =2, "kappa_ben"=4, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.v), 
+    "small_benth_12_f2"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=2.0, "temp" = 12, "fmort" = fish.mort.v),
+    "large_benth_12_f2"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.8, "temp" = 12, "fmort" = fish.mort.v),
+    
+    "baseline_14_f2"=       c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.v), 
+    "more_plankt_14_f2"=    c("kappa" =2.6, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.v), 
+    "less_plankt_14_f2"=    c("kappa" =1.5, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.v), 
+    "small_plankt_14_f2"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.18, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.v), 
+    "large_plankt_14_f2"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.12, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.v), 
+    "more_benth_14_f2"=     c("kappa" =2, "kappa_ben"=9, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.v), 
+    "less_benth_14_f2"=     c("kappa" =2, "kappa_ben"=4, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.v), 
+    "small_benth_14_f2"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=2.0, "temp" = 14.5, "fmort" = fish.mort.v), 
+    "large_benth_14_f2"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.8, "temp" = 14.5, "fmort" = fish.mort.v)) 
+
+### Setup run parameters ----
+
+## do you want a plot for each run, while the simulations are going? This takes
+## more time but is sometimes fun to watch and keep an eye if there are
+## oscillating dynamics
+showplot = T
+
+## setup run time 
+tmax = 100
+#number of size groups 
+no_size_groups = 200
+#timestep used in the integration 
+dt = 0.2
+#our reference temperature 
+temp_ref = 12
+
+## fixed background params- THESE ARE NOT CHANGING IN SCENARIOS
+w_pp_cutoff = 1 #g
+r_pp = 1 # rate of regeneration
+min_w_pp = 1e-10 #g
+
+w_bb_cutoff = 5 #
+r_bb = 1 # 
+min_w_bb = 0.001 # 0.01
+
+#algae are not really size structured food resources, but are treated as such here for now 
+kappa_alg = 16 #intercept assuming g/m2
+lambda_alg = 1.6 #slope is much more shallow, to allow for lots of large kelp, but size structure does not really make much sense here
+w_aa_cutoff = 50 
+r_aa = 2 
+min_w_aa = 0.001
+
+### Setup arrays to store data ----
+
+# We will store data on: 
+# 1) Numbers at size to look at species spectra and so on
+# 2) Numbers at size for all background spectra, just in case we need it
+# 3) Proportion of Large fish indicator 
+# 4) Mean weight above some thresholds: two thresholds used are MeanWeight of 
+#    mature fish (maturation size is a threshold) and MeanWeight of fish above 
+#    5cm in length
+# 5) Calculate community slopes: for all species, for fish only 
+#    (exclude lobsters and urchins), and for four functional groups 
+#    separately - benthivores, planktivores, herbivores (includes urchins) 
+#    and predators (includes lobsters)
+
+#number of scenarios in a list
+scen_num <- length(lengths(prod_scen))
+n_spp <- length(params@species_params$species)
+
+## 200, 326 or 120 in these dataframes refers to the numbers of size groups 
+# in different arrays
+numb_all <-array(data=NA,c(scen_num,n_spp,200,dim(params28)[1])) 
+biom_all <- array(data=NA, c(scen_num,n_spp, dim(params28)[1]))
+plankt_all <- array(data=NA, c(scen_num,326, dim(params28)[1]))
+bent_all <- array(data=NA, c(scen_num,120, dim(params28)[1]))
+alg_all <- array(data=NA, c(scen_num,153, dim(params28)[1]))
+PropLarFish_all <- array(data= NA, c(scen_num,n_spp, dim(params28)[1]))
+Yield_all <- array(data= NA, c(scen_num,n_spp, dim(params28)[1]))
+#Yield_all[c(1:14),,] <- 0 #no fishing scenarios will have zero yield naturally
+MeanWgtMat_all <- array(data= NA, c(scen_num,n_spp, dim(params28)[1]))
+MeanWgtAbove5_all <- array(data= NA, c(scen_num,n_spp, dim(params28)[1]))
+MeanWgtAbove10_all <- array(data= NA, c(scen_num,n_spp, dim(params28)[1]))
+CommSlope_all <- array(data= NA, c(scen_num,3,dim(params28)[1]))
+CommSlopeFish_all <- array(data= NA, c(scen_num,3,dim(params28)[1]))
+CommSlopeBent_all <- array(data= NA, c(scen_num,3,dim(params28)[1]))
+CommSlopePred_all <- array(data= NA, c(scen_num,3,dim(params28)[1]))
+CommSlopePlan_all <- array(data= NA, c(scen_num,3,dim(params28)[1]))
+CommSlopeHerb_all <- array(data= NA, c(scen_num,3,dim(params28)[1]))
+
+## setup different species groups for community slope calcualtions
+fishonly <- as.character(mariaParams$species[c(1:15)])
+bentiv <- as.character(mariaParams$species[which(mariaParams$funcgr == "omni")])
+plankt <- as.character(mariaParams$species[which(mariaParams$funcgr == "plankt")])
+predat <- as.character(mariaParams$species[which(mariaParams$funcgr == "predat")])
+herbiv <- as.character(mariaParams$species[which(mariaParams$funcgr == "herbi")])
+
+
+### All simulations ----
+
+# This will run 36 scenarios with 29 parameter combinations each and save
+# outputs into data arrays
+
+## loop through 36 scenarios
+
+for (scen in 1:scen_num) {
+    
+    ## resource params
+    kappa = as.numeric(prod_scen[[scen]]["kappa"])
+    kappa_ben = as.numeric(prod_scen[[scen]]["kappa_ben"])  
+    lambda = as.numeric(prod_scen[[scen]]["lambda"])
+    lambda_ben = as.numeric(prod_scen[[scen]]["lambda_ben"])
+    
+    ## get temperature value for the scenario 
+    temp_run <- as.numeric(prod_scen[[scen]]["temp"])
+    
+    ## for each scenario loop through 29 parameter combinations   
+    for (iter in 1:dim(params28)[1]) {
+        
+        print("scenario = ")
+        print (scen)
+        print(prod_scen[scen])
+        print("iteration out of 29")
+        print(iter)  
+        ## update parameters
+        
+        mariaParams$r_max <- as.numeric(accepted1[iter,c(1:17)])
+        mariaParams$gamma <- as.numeric(accepted1[iter,c(18:34)])
+        availUr <- as.numeric(accepted1[iter,35])
+        availUrLob <- as.numeric(accepted1[iter,36])
+        availSchooling <- as.numeric(accepted1[iter,37])
+        
+        # overwrite default interaction values with this (only for predators that feed on fish, i.e. have values > 0)
+        inter[c(which(inter[,which(mariaParams$species == "T_caudimaculatus")] >0)),which(mariaParams$species == "T_caudimaculatus")] <- availSchooling
+        inter[c(which(inter[,which(mariaParams$species == "P_laticlavius")] >0)),which(mariaParams$species == "P_laticlavius")] <- availSchooling
+        inter[c(which(inter[,which(mariaParams$species == "C_rasor")] >0)),which(mariaParams$species == "C_rasor")] <- availSchooling
+        inter[c(which(inter[,which(mariaParams$species == "urchins")] >0)),which(mariaParams$species == "urchins")] <- availUr
+        inter[which(mariaParams$species == "lobsters"), which(mariaParams$species == "urchins")] <- availUrLob
+        
+        
+        ### setup again with new parameter values
+        # GWD: We use our own setup function here, which already
+        # implements the temperature rescalings as well as setting up
+        # the resource parameters, adding the senescence mortality,
+        # and setting initial abundances.
+        params <- newTasmanianParams(mariaParams, 
+                                interaction = inter,
+                                temperature = temp_run,
+                                no_w = no_size_groups, 
+                                kappa = kappa, 
+                                lambda = lambda, 
+                                kappa_ben = kappa_ben, 
+                                lambda_ben = lambda_ben,
+                                stable_abund = stable_abund,
+                                stable_pl = stable_pl,
+                                stable_ben = stable_ben,
+                                stable_alg = stable_alg)
+        # GWD: Rather than having one gear per species and setting a different
+        # effort for each, we set the fishing mortality via the catchability
+        # and then use effort 1.
+        # set catchability
+        
+        fish.mort <- as.numeric(prod_scen[[scen]][6:22])
+        gear_params(params)$catchability <- fish.mort
+        
+        #run the model
+        tmax <- 100 
+        dt <- 0.2
+        # GWD: use standard project function. We don't need to supply
+        # temperature here because we have already rescaled the rates
+        # when we set up the params object.
+        tasm1 <- project(params, t_max = tmax, effort = 1, dt = dt)
+        
+        ### Calculate various statistics inside the run to avoid saving massive model objects
+        if (showplot == T) {
+            plot(tasm1)
+        }
+        #get relative biomasses 
+        #need to take an average of the last 30 years because it is oscillating
+        biomass <- apply((getBiomass(tasm1)[c((tmax-29):tmax),]),2,mean)
+        numbers <- apply((tasm1@n[c((tmax-29):tmax),,]),c(2,3),mean)
+
+        PropLarFish <- rep(NA,17)
+        MeanWgtMat <- rep(NA,17)
+        MeanWgtAbove5 <- rep(NA,17)
+        MeanWgtAbove10 <- rep(NA,17)
+        for (xx in 1:length(mariaParams$species)) {
+            PropLarFish[xx] <- mean(getProportionOfLargeFish(tasm1,species = xx, threshold_w = mariaParams$w_mat[xx])[(tmax-29):tmax])
+            MeanWgtMat[xx]  <- mean(getMeanWeight(tasm1, min_w = mariaParams$w_mat[xx], max_w = mariaParams$w_inf[xx])[(tmax-29):tmax])
+            MeanWgtAbove5[xx]  <- mean(getMeanWeight(tasm1, min_w = mariaParams$cm5[xx], max_w = mariaParams$w_inf[xx])[(tmax-29):tmax])
+            MeanWgtAbove10[xx]  <- mean(getMeanWeight(tasm1, min_w = mariaParams$cm10[xx], max_w = mariaParams$w_inf[xx])[(tmax-29):tmax])
+
+        }
+        
+        #get mean values of various statistics over the last 30 years and save them in arrays 
+        # ttemp <- NResource(tasm1)[c((tmax-29):tmax),"pl",which(params@w_full > min_w_pp & params@w_full < w_pp_cutoff)]
+        # plankt_all[scen,,iter] <- apply(ttemp, 2, mean)
+        # 
+        # ttemp <- NResource(tasm1)[c((tmax-29):tmax),"bb",which(params@w_full > min_w_bb & params@w_full < w_bb_cutoff)]
+        # bent_all[scen,,iter] <- apply(ttemp, 2, mean)
+        # 
+        # ttemp <- NResource(tasm1)[c((tmax-29):tmax),"aa",which(params@w_full > min_w_aa & params@w_full < w_aa_cutoff)]
+        # alg_all[scen,,iter] <- apply(ttemp, 2, mean)
+        # 
+        
+        numb_all[scen,,,iter] <- numbers
+        biom_all[scen,,iter] <- biomass
+        PropLarFish_all[scen,,iter] <- PropLarFish
+        MeanWgtMat_all[scen,,iter] <- MeanWgtMat
+        MeanWgtAbove5_all[scen,,iter] <- MeanWgtAbove5
+        MeanWgtAbove10_all[scen,,iter] <- MeanWgtAbove10
+        Yield_all[scen,,iter] <- as.numeric(apply((getYield(tasm1)[c((tmax-29):tmax),]),2,mean))
+        CommSlope_all[scen,,iter] <- as.numeric(apply((getCommunitySlope(tasm1)[c((tmax-29):tmax),]),2,mean))
+        CommSlopeFish_all[scen,,iter] <- as.numeric(apply((getCommunitySlope(tasm1, species = fishonly)[c((tmax-29):tmax),]),2,mean))
+        CommSlopeBent_all[scen,,iter] <- as.numeric(apply((getCommunitySlope(tasm1, species = bentiv)[c((tmax-29):tmax),]),2,mean))
+        CommSlopePlan_all[scen,,iter] <- as.numeric(apply((getCommunitySlope(tasm1, species = plankt)[c((tmax-29):tmax),]),2,mean))
+        CommSlopeHerb_all[scen,,iter] <- as.numeric(apply((getCommunitySlope(tasm1, species = herbiv)[c((tmax-29):tmax),]),2,mean))
+        CommSlopePred_all[scen,,iter] <- as.numeric(apply((getCommunitySlope(tasm1, species = predat)[c((tmax-29):tmax),]),2,mean))
+        # 
+    }
+    
+}
+
+### Save results ----
+
+# save(numb_all, file = "../outputs/numb.RData")
+# save(biom_all, file = "../outputs/biom.RData")
+# save(plankt_all, file = "outputs/plankt.RData")
+# save(bent_all, file = "outputs/bent.RData")
+# save(alg_all, file = "outputs/alg.RData")
+# save(PropLarFish_all, file = "outputs/PropLargFish.RData")
+# save(MeanWgtMat_all, file = "outputs/MeanWgtMat.RData")
+# save(MeanWgtAbove5_all, file = "outputs/MeanWgtAbove5.RData")
+# save(MeanWgtAbove10_all, file = "outputs/MeanWgtAbove10.RData")
+# save(Yield_all, file = "outputs/Yield.RData")
+# save(CommSlope_all, file = "outputs/CommSlope.RData")
+# save(CommSlopeFish_all, file = "outputs/CommSlopeFish.RData")
+# save(CommSlopeBent_all, file = "outputs/CommSlopeBent.RData")
+# save(CommSlopePlan_all, file = "outputs/CommSlopePlan.RData")
+# save(CommSlopeHerb_all, file = "outputs/CommSlopeHerb.RData")
+# save(CommSlopePred_all, file = "outputs/CommSlopePred.RData")
+
+#saveRDS(foodWebStats, file = "altRuns28/foodwebstats.rds")
+
+
+```
+
+### Explore species sensitivity to fishing: 
+
+ASK - how to setup fishing one species at a time in a loop? 
+
+This part is essential to assess species interactions. Now we fish one species at a time and see how that will affect the community. How do we visualise the output matrix?
+
+```{r, eval = F}
+tmax = tmax
+fish.mort <- 0.2
+
+relbiomFishOne <- data.frame()
+
+for (i in 1:length(params@species_params$species)) {
+
+#set up the effort array
+eff_arr = array(0, dim = c(tmax,length(params@species_params$species)))
+rowtest <- as.character(seq(from = 1, to = tmax))  #names of rows
+dimnames(eff_arr) = list(rowtest, params@species_params$gear)
+eff_arr[,i] <- fish.mort
+
+#run the model with fishing using previously set params set
+tasm1ef1 <- project(params, t_max = tmax, effort=eff_arr, dt = 0.2, diet_steps = 0)  
+plot(tasm1ef1)
+
+print(round(getBiomass(tasm1ef1)[tmax,]/getBiomass(tasm1)[tmax,],5))
+
+temp <- round(getBiomass(tasm1ef1)[tmax,]/getBiomass(tasm1)[tmax,],5)
+relbiomFishOne <- rbind(relbiomFishOne, temp)
+
+}
+
+colnames(relbiomFishOne) <- params@species_params$species #biomasses of species as you fish species in rows
+rownames(relbiomFishOne) <- paste("fish_",params@species_params$species, sep="")
+
+#save(relbiomFishOne, file = "../outputs/FishOneSppBiom_Nov20.RData")
+
+knitr::kable(relbiomFishOne, digits = 2)
+
+#look at how each species responds to fishing individual species
+responseToF <- diag(as.matrix(relbiomFishOne))
+which(responseToF < 0.4)
+
+## explore correlations among species, etc
+## Look if biomass of one species (T_caudimaculatus in my case) is strongly correlated to other species
+#cor_Tra <- rep(NA, 17)
+#p_Tra <- rep(NA, 17)
+
+#for (i in 1:length(params@species_params$species)) {
+#onesp <- relbiomFishOne[,i]
+#temp <- cor.test(relbiomFishOne$T_caudimaculatus, onesp)
+#cor_Tra[i] <- temp$statistic
+#p_Tra[i] <- round(temp$p.value,5)
+#}
+#trach_inter <- cbind(as.character(mariaParams$species), round(cor_Tra,3), round(p_Tra,4))  
+
+
+```
+
+### ################
+
+```{r, eval = F}
+## data for invertebrate abundances
+load(file = "modelParams/BenticInvAbund_Tasm.RData")
+
+## expected abundance using the equation applied to the weight groups used in mizer
+obsab <- 0.8 - 0.85*log10(params@w_full) 
+
+# Modeled abundance of benthos per size class
+#length(params@dw_full[c(min(which(params@w_full > min_w_bb)):max(which(params@w_full < w_bb_cutoff)))])
+modbb <- log10(params@initial_n_bb * params@dw_full) 
+modpl <- log10(params@initial_n_pp * params@dw_full)
+modaa <- log10(params@initial_n_aa * params@dw_full)
+
+plot(log10(params@w_full), obsab, type = 'l', lwd = 1.5, xlim = c(-6,2), ylim = c(-3, 5), main = "Slopes of initial benthic abundance versus observed abundance", xlab = "Log10, w, g", ylab = "Log10(Abundance per m2")
+points(log10(params@w_full), modbb, type = 'l', col = 'red')
+points(log10(params@w_full),modpl, type = 'l', col = 'green')
+points(log10(params@w_full),modaa, type = 'l', col = 'blue')
+#abline(v = log10(0.05), lty = 2)
+abline(v = log10(min_w_bb), lty =2)
+
+```
+
+### Get FMSY
+F and max sustain yield should be at around 0.2 if no other info is available (higher for small species). If it is too low it means reproduction is not fast enough, and we need to increase RDI/RDD ratio or decrease linear dependence on stock biomass. 
+This takes a while to run!
+
+NOTE: THE run is saved, so make sure to load the file rather than run everything again 
+
+```{r}
+#might beed to run it for longer for biomasses to stabilise
+tmax = 200
+yield_final <- data.frame()
+eff_vector1 = seq(from = 0.01, to = 0.09, by = 0.01)
+eff_vector2 = seq(from = 0.1, to = 0.2, by = 0.02)
+eff_vector3 = seq(from = 0.25, to = 0.95, by = 0.05)
+eff_vector = c(eff_vector1, eff_vector2, eff_vector3)
+
+for (i in 1:length(eff_vector)) {
+  print("eff_number")
+  print(i)
+  yield_array <- as.data.frame(matrix(ncol = 17, nrow = tmax))
+  colnames(yield_array) <- mariaParams$species
+  
+  eff.now <- eff_vector[i]
+  yield_array$fishing <- eff.now
+  yield_array$year <- c(1:tmax)
+  
+  for (b in 1:length(mariaParams$species)) {
+    print("sp_no")
+    print(b)
+    #Setup effort array
+    eff_arr = array(0, dim = c(tmax,17))
+    rowtest <- as.character(seq(from = 1, to = tmax))  #names of rows
+    dimnames(eff_arr) = list (rowtest, params@species_params$gear)
+    eff_arr[,b] <- eff.now
+    
+    tasm1ef <- project(params, t_max = tmax, effort=eff_arr, dt = 0.2, diet_steps = 0)
+    yield <- getYield(tasm1ef)
+    yield_array[,b] <- yield[,b]
+    
+  }
+  
+  yield_final <- rbind(yield_final, yield_array)   
+  
+}   
+
+#save(yield_final, file = "../outputs/yield001to095.RData")
+```
+
+something does not work here, need to check:
+```{r}
+## check if yields have stabilised for a given fishing level
+load(file = "../outputs/yield001to07_lessDD.RData")
+
+#which(yield_final$fishing == 0.2)
+#test <- yield_final[-c(4001:4250),] #0.2 mort was used two times so remove some rows
+#test2 <- test[-c(2251:2500),]
+
+oneeffort <- yield_final %>% filter (fishing == 0.9) ## decide which fishign level to use
+par(mfrow = c(4,5), mar = c(1,1,1,1))
+
+for (i in 1:length(mariaParams$species)) {
+  onespp <- oneeffort[,i]
+  plot(x = c(1:length(onespp)), y = onespp, type= 'l', ylim = c(0, max(onespp)))
+}
+
+ind <- seq(from = 200, to = 6000, by = 200)
+
+yieldF <- yield_final[ind,]
+
+par(mfrow = c(1,1), mar = c(3,4,3,3))
+
+plot(eff_vector,yieldF[,17], type = 'l')
+mariaParams$species
+
+
+## get the actual F at max yield
+fmsy = rep(NA, length(mariaParams$species))
+
+for (i in 1:length(mariaParams$species)) {
+  
+fmsy[i] <- yieldF$fishing[which(yieldF[,i] == max(yieldF[,i]))]
+}
+
+MaxYield <- list()
+MaxYield$fmsy <- as.vector(fmsy)
+MaxYield$species <- as.character(mariaParams$species)
+MaxYield$erepro <- round(mariaParams$erepro,3)
+MaxYield$sensitivity <- as.character(mariaParams$sensitivity)
+MaxYield <- as.data.frame(MaxYield)
+
+write.csv(MaxYield, file = "../outputs/Fmsy.csv")
+
+```
+#Plot all sizespectra at a chosen time
+
+```{r warning=FALSE, message=FALSE, echo=T}
+par(mfrow = c(1,1), mar = c(4,4,4,4))
+
+tplot = 150 #which time to plot
+
+model <- tasm1
+
+#plot size spectra
+plot(log10(model@params@w_full), log10(model@n_pp[tplot,]*params@dw_full), type = 'l', ylim = c(-10,10), xlim = c(-5,5),lwd = 2, xlab = 'size, g', ylab = 'abundance')
+points(log10(model@params@w_full), log10(model@n_bb[tplot,]*params@dw_full), type = 'l', lwd = 2, col = 'red')
+points(log10(model@params@w_full), log10(model@n_aa[tplot,]*params@dw_full), type = 'l', lwd = 1, col = 'green')
+
+for (i in 1: length(params@species_params$species)) {
+  points(log10(model@params@w), log10(model@n[tplot,i,]*params@dw), type = 'l')
+  
+}
+
+ppatmat = log10(mariaParams$w_mat/mariaParams$beta) # prefered prey size at predators maturation size
+abline(v = c(ppatmat), lty = 2, col = 'grey')
+
+abline(v = log10(mariaParams$w_mat), lty = 2, col = 'yellow')
+
+```
+
+### Backgr mort: functions 
+
+```{r}
+## need to pass functions separately
+
+getBenthosMort <- function(object, n, n_pp, n_bb, n_aa, intakeScalar,
+             pred_rate = getPredRate(object, n = n, n_pp = n_pp, n_bb = n_bb, n_aa = n_aa, intakeScalar = intakeScalar)) {
+    temp <- matrix(object@species_params$avail_BB, nrow = 1, ncol = length(object@species_params$avail_BB), byrow = T)
+    m2_benthos <- temp %*% pred_rate
+    return(m2_benthos)
+}
+
+
+getPlanktonMort <- function(object, n, n_pp, n_bb, n_aa, intakeScalar,
+             pred_rate = getPredRate(object, n = n, n_pp = n_pp, n_bb = n_bb, n_aa = n_aa, intakeScalar = intakeScalar)) {
+
+    temp <- matrix(object@species_params$avail_PP, nrow = 1, ncol = length(object@species_params$avail_PP), byrow = T)
+    m2_plankton <- temp %*% pred_rate
+
+    return(m2_plankton)
+}
+
+getAlgalMort <- 
+  function(object, n, n_pp, n_bb, n_aa, intakeScalar,
+           pred_rate = getPredRate(object, n = n, n_pp = n_pp, n_bb = n_bb, n_aa = n_aa, intakeScalar = intakeScalar)) {
+        temp <- matrix(object@species_params$avail_AA, nrow = 1, ncol = length(object@species_params$avail_AA), byrow = T)
+    m2_algae <- temp %*% pred_rate
+    
+    return(m2_algae)
+  }
+```
+
+### Benthos mort
+
+```{r}
+tasm1 <- tasm1 #put your model name here
+params <- params
+tmax <- tmax #time to plot
+
+## Benthos 
+#get ranges for plotting 
+w_full_bb <- params@w_full[which(params@w_full > min_w_bb & params@w_full < w_bb_cutoff)]
+#dw_full_bb <- params@dw_full[which(params@w_full > min_w_bb & params@w_full < w_bb_cutoff)]
+
+## to run the line below you need to run the functions in the chunk above!
+ben_mort <- getBenthosMort(params, n = tasm1@n[tmax,,], n_pp = tasm1@n_pp[tmax,],n_bb = tasm1@n_bb[tmax,],n_aa = tasm1@n_aa[tmax,],intakeScalar = tasm1@intTempScalar[,,(tmax/dt)])
+
+ben_mort <- getBenthosMort(params, n = tasm1@n[tmax,,], n_pp = tasm1@n_pp[tmax,],n_bb = tasm1@n_bb[tmax,],n_aa = tasm1@n_aa[tmax,],intakeScalar = tasm1@intTempScalar[,,(tmax/dt)])
+
+#only get relevant size ranges
+ben_mort <- ben_mort[which(params@w_full > min_w_bb & params@w_full < w_bb_cutoff)]
+
+#plot
+plot(log(w_full), ben_mort, type = 'l', lwd = 2, main = "Inst benthos mortality rate per year", xlab = "log size, g", ylab = "mortality 1/years")
+```
+
+### Plankton mort 
+
+```{r}
+tasm1 <- tasm1 #put your model name here
+params <- params
+tmax <- tmax #time to plot
+
+#get ranges for plotting 
+w_full_pp <- params@w_full[which(params@w_full > min_w_pp & params@w_full < w_pp_cutoff)]
+#dw_full_pp <- params@dw_full[which(params@w_full > min_w_pp & params@w_full < w_pp_cutoff)]
+
+pla_mort <- getPlanktonMort(params, n = tasm1@n[tmax,,], n_pp = tasm1@n_pp[tmax,],n_bb = tasm1@n_bb[tmax,],n_aa = tasm1@n_aa[tmax,],intakeScalar = tasm1@intTempScalar[,,(tmax/dt)])
+
+#only get relevant size ranges
+pla_mort <- pla_mort[which(params@w_full > min_w_pp & params@w_full < w_pp_cutoff)]
+
+#plot
+plot(log(w_full_pp), pla_mort, type = 'l', lwd = 2, main = "Inst plankton mortality rate per year", xlab = "log size, g", ylab = "mortality 1/years")
+```
+
+
+### Algal mort
+
+```{r}
+tasm1 <- tasm1 #put your model name here
+params <- params
+tmax <- tmax #time to plot
+
+#get ranges for plotting 
+w_full_aa <- params@w_full[which(params@w_full > min_w_aa & params@w_full < w_aa_cutoff)]
+
+alg_mort <- getAlgalMort(params, n = tasm1@n[tmax,,], n_pp = tasm1@n_pp[tmax,],n_bb = tasm1@n_bb[tmax,],n_aa = tasm1@n_aa[tmax,],intakeScalar = tasm1@intTempScalar[,,(tmax/dt)])
+
+#only get relevant size ranges
+alg_mort <- alg_mort[which(params@w_full > min_w_aa & params@w_full < w_aa_cutoff)]
+
+#plot
+plot(log(w_full_aa), alg_mort, type = 'l', lwd = 2, main = "Inst algal mortality rate per year", xlab = "log size, g", ylab = "mortality 1/years")
+
+
+```
+
+### starv mort function
+
+```{r}
+
+getSMort <- function(object, n, n_pp, n_bb, n_aa, intakeScalar, metScalar,
+                     e = getEReproAndGrowth(object, n = n, n_pp = n_pp, n_bb = n_bb, n_aa = n_aa, intakeScalar = intakeScalar, metScalar = metScalar)){
+
+            if (!all(dim(e) == c(nrow(object@species_params), length(object@w)))) {
+              stop("e argument must have dimensions: no. species (",
+                   nrow(object@species_params), ") x no. size bins (",
+                   length(object@w), ")")
+            }
+
+        mu_S <- e # assign net energy to the initial starvation mortality matrix
+
+        #x_old <- t(t(mu_S)/(0.1*object@w)) # apply the mortality formula to the whole matrix
+        #print (dim(x_old))
+        #print(x_old[c(3:6, 50:60)])
+        #remember, 0.1 is a parameter here, which is a scaling constant on how negative e translates to starvation mortality. For a 100g fish with a negative e of -1, it will give starvation value of 0.1. For a 10 g fish with e of -1, it will give mortality of 1. This seems reasonable for a start, but a more conmplex relationship could be explored in the future 
+        ### TODO ### a small value added here to avoid division by zero, but not sure this is ideal
+        x <- t(t(mu_S)/((1/(object@c+1e-12))*object@w))
+        #print (dim(x))
+        #print(x[c(3:6, 50:60)])
+        mu_S[mu_S<0] <- x[x<0] # replace the negative values of e by the starvation mortality
+        mu_S[mu_S>0] <- 0 # replace the positive values of e by 0
+
+        mu_S = - mu_S # this returns negative mortality values, because negative e is divided by weight. So to get the actual mortality we turn them into positive values 
+        #comment to test
+    return(mu_S)
+}
+
+```
+
+### Predation mort proportion: TODO
+
+```{r}
+sim <- tasm1
+
+final_time_idx <- dim(sim@n)[[1]]
+n <- sim@n[final_time_idx, , ]
+n_pp <- sim@n_pp[final_time_idx, ]
+n_bb <- sim@n_bb[final_time_idx, ]
+n_aa <- sim@n_aa[final_time_idx, ]
+
+#test <- getPredMort(sim@params, n, n_pp, n_bb, n_aa, intakeScalar = sim@intTempScalar[,,(final_time_idx/dt)])
+
+total_pred_mort <- rowSums(getPredMort(sim@params, n, n_pp, n_bb, n_aa, intakeScalar = sim@intTempScalar[,,(final_time_idx/dt)]) * n)
+total_starv_mort <- rowSums(getSMort(sim@params, n, n_pp, n_bb, n_aa, intakeScalar = sim@intTempScalar[,,(final_time_idx/dt)], metScalar = sim@metTempScalar[,,(final_time_idx/dt)]) * n)
+
+total_mort <- rowSums(getMort(sim@params, n, n_pp, n_bb, n_aa, intakeScalar = sim@intTempScalar[,,(final_time_idx/dt)], morScalar = sim@morTempScalar[,,(final_time_idx/dt)], metScalar = sim@metTempScalar[,,(final_time_idx/dt)], effort = 0) * n)
+
+total_mort <- rowSums(getMort(sim@params, n, n_pp) * n)
+proportion <- total_pred_mort / total_mort
+st_proportion <- total_starv_mort / total_mort
+
+
+```
+
+
+
+### Background depletion 
+
+In the stabilised set of parameters, where initial abundances are set from final abundances the depletion is of course 1, because everything is stable 
+
+```{r warning=FALSE, message=FALSE, echo=T}
+
+model <- tasm1
+
+smallcut <- max(which(model@params@w_full < min_w_bb)) +1
+largecut <- min(which(model@params@w_full > w_bb_cutoff)) -1
+
+largecutP <- min(which(model@params@w_full > w_pp_cutoff)) -1
+
+smallcutA <- max(which(model@params@w_full < min_w_aa)) +1
+largecutA <- min(which(model@params@w_full > w_aa_cutoff)) -1
+
+plot(log10(model@params@w_full[c(smallcut:largecut)]), (model@n_bb[tmax,c(smallcut:largecut)]/model@n_bb[1,c(smallcut:largecut)]),ylim = c(0,1.5), xlim = c( log10(model@params@w_full[1]), log(model@params@w_full[largecutA])), type = 'l', col = 'red', xlab = "log weight,g", ylab = "depletion compared to initial abundance", main = "Depletion of plankton, benthos(red) and algae(green)")
+points(log10(model@params@w_full[c(1:largecutP)]), (model@n_pp[tmax,c(1:largecutP)]/model@n_pp[1,c(1:largecutP)]),type = 'l', col = 'black')
+points(log10(model@params@w_full[c(smallcutA:largecutA)]), (model@n_aa[tmax,c(smallcutA:largecutA)]/model@n_aa[1,c(smallcutA:largecutA)]),type = 'l', col = 'green')
+
+
+```
+
+### Get RDD/rmax
+
+This tells you where the species are on their rmax level, but I found that this is not necessarily an indication of their sensitivity to fishing...
+
+```{r warning=FALSE, message=FALSE, echo=T}
+
+#Check where they are at rmax level
+tmax =tmax
+model <- tasm1
+
+a1 <- getRDI(params,model@n[tmax,,],model@n_pp[tmax,], model@n_bb[tmax,], model@n_aa[tmax,], model@intTempScalar[,,(tmax/dt)], model@metTempScalar[,,(tmax/dt)])
+
+#get RDD 
+a2 <- getRDD(params,model@n[tmax,,],model@n_pp[tmax,], model@n_bb[tmax,], model@n_aa[tmax,], sex_ratio = 0.5, model@intTempScalar[,,(tmax/dt)], model@metTempScalar[,,(tmax/dt)])
+
+#get RDD to rmax ratio
+rmaxratio <- a2/mariaParams$r_max
+#plot(rmaxratio)
+round(rmaxratio,4)
+round(a1/a2, 4)
+
+
+```
+
+### Sp params
+
+Write species params for the publication 
+
+```{r}
+para <- params@species_params
+
+sppPprint <- para %>% select(species, w_inf, w_min, w_mat, beta, sigma, avail_PP, avail_BB, avail_AA, r_max, erepro, gamma, ks, h, z0)
+
+sppPprint[,10] <- round(sppPprint[,10],5)
+sppPprint[,11] <- round(sppPprint[,11],4)
+sppPprint[,c(12:14)] <- round(sppPprint[,c(12:14)],2)
+sppPprint[,15] <- round(sppPprint[,15],3)
+
+write.csv(sppPprint, file = "../suplTables/TableSppParams2.csv")
+
+
+```
+
+##### ###########
+
