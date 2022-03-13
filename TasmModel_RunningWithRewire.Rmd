@@ -5,7 +5,9 @@ date: "7 November 2019"
 output: html_document
 ---
 
-This is the original code that was used to develop Tasmanian model and multiple resources for coastal ecosystems. This work was started in 2018 and later multiple resources and other features of this model (e.g. starvation mortality) were implemented in the main mizer package, through mizerMR and mizerStarvation add-ons. So it is NOT recommended to use this code, but it is kept here for tracing purposes. 
+This is the original code that was used to develop Tasmanian model and multiple resources for coastal ecosystems. This work was started in 2018 and later multiple resources and other features of this model (e.g. starvation mortality) were implemented in the main mizer package, through mizerMR and mizerStarvation add-ons. 
+This is THE MAIN code demonstrating model parameterisation, tuning and so on. 
+
 
 
 ### clear memory
