@@ -6,7 +6,7 @@ output: html_document
 ---
 
 This code shows how to run the Tasmanian model with standard mizer, using add-ons for multiple resources (mizerMR), starvation (mizerStarvation) and some experimental features (mizerExperimental). 
-It is recommended to use standard mizer for all model runs, because this package is being maintained and developed, whereas mizerRewire was just a temporary project to get multiple background resources and temperature dependent rates. Now that multiple resources are available through mizerMR, mizerRewire is not needed. 
+It is recommended to use standard mizer for all model runs, because this package is being maintained and developed, whereas mizerRewire was just a temporary project to get multiple background resources and temperature dependent rates. Now that multiple resources are available through mizerRewire experimental code on AstaAudzi GitHub account is not needed. 
 
 !! NB !! 
 There has been a small change in how predation kernel is calculated in mizer (ref to the blog post or issue?). Therefore for some parameter combinations, under scenarios with low resource levels, model runs give different outcomes for most sensitive species (urchins). This is because under these parameter combinations urchins rely on the smallest resource range, and this is where predation kernel calculation changed. Currently mizer truncates predation kernel at 3 sigma values, whereas this was not the case in earlier mizer from which mizerRewire was developed. This discrepancy highlights that even small changes in predation kernel can have an impact on model outcomes under some model parameterisations, that using just one set of model parameters is a risky strategy, and that ideally one should use a range of alternative parameters to explore model outcomes. 
@@ -84,7 +84,6 @@ min_w_aa = 0.001
  - the senescence mortality
  and provide a function for setting up Tasmanian model with  benthos and algae.
 
-TODO - make initial abundance setup more flexibly?? 
 
 ```{r, eval = T, echo = F}
 #
@@ -247,13 +246,12 @@ plotSpectra(tasm1)
  
 # 
  obsInvAb <- sum(InvData$meanAb[which(InvData$wgt > min_w_bb & InvData$wgt < w_bb_cutoff)])
-### ASK!! 
   tasm1@n_other["bb"]
- modelInvAb <- sum(tasm1@n_bb[tmax,]*params@dw_full)
+# modelInvAb <- sum(tasm1@n_bb[tmax,]*params@dw_full)
 # #ratio of model vs observed inv abundances (benthic spectrum) in the relevant range
 # modelInvAb/obsInvAb
 
-
+#
 ## Now run with stable low fishing values used in the model (Table 1)
  fish.mort.spp <- c(0.15, 0.15, 0, 0.1, 0.15, 0.1, 0.15, 0.1, 0.1, 0.15, 0.15, 
                   0.15, 0.15, 0.15, 0.1, 0.15, 0.15)
@@ -270,16 +268,9 @@ getBiomass(tasm1ef)[mean((tmax-10):tmax),]/getBiomass(tasm1)[tmax,]
 
 ```
 
-
-ASK! 
-get diet 
-get Fmsy
-get growth curves
-get reproduction level 
-check depletion level of background resource 
-
-
 ### fun new mizer features
+
+
 
 ```{r}
 
@@ -287,7 +278,10 @@ species_params(params)$biomass_observed <- mariaParams$BioM2
 species_params(params)$biomass_cutoff <- mariaParams$a * 2 ^ mariaParams$b
 
 plotBiomassObservedVsModel(params)
+#emergent feeding level for a specific species
 plotlyFeedingLevel(tasm1, include_critical = T, species = 6)
+#emergent feeding level for all species
+plotlyFeedingLevel(tasm1, include_critical = F)
 getReproductionLevel(params)
 
 getProportionOfLargeFish(tasm1)[tmax]
@@ -296,7 +290,8 @@ getProportionOfLargeFish(tasm1, biomass_proportion = F)[tmax]
 
 getProportionOfLargeFish(tasm1, threshold_l = 10, biomass_proportion = F)[tmax]
 
-animateSpectra(tasm1ef)
+## This is a cool animation of how spectra change through time. It is only interesting in the scenario with fishing because there we get oscillations. For the unfished scenario, where everything starts from equilibrium biomasses, spectra are stable. 
+#animateSpectra(tasm1ef)
 
 animateSpectra(tasm1ef, power = 2)
 
@@ -319,36 +314,6 @@ sim1 <- project(p, t_max = 100)
 plot(sim1)
 plotBiomass(sim1)
 round(p@species_params$erepro,3)
-
-
-
-p <- calibrateBiomass(p)
-plotSpectra(p)
-p <- tuneGrowth(p)
-
-plotlyBiomassObservedVsModel(p)
-p <- matchBiomasses(p)
-sim <- steady(p, return_sim = TRUE)
-plotBiomass(sim)
-
-
-
- initial_effort(params) <- 1
-
-plotYieldVsF(params, "L_forsteri")
-
-load(file = "../outputs/yield001to095.RData")
-
-getReproductionLevel(getParams(tasm1))
-
-params2 <- setBevertonHolt(params, reproduction_level = c("L_forsteri" = 0.6))
-
-
-p <- tuneParams(p, tabs = c("Spectra", "Growth", "Repro", "Catch", "Diet", "Death", "Rates",
-     "Sim"), controls = c("abundance", "predation", "fishing", "reproduction", "other")
- )
-
-
 
 
 ```
@@ -675,430 +640,4 @@ for (scen in 1:scen_num) {
 
 
 ```
-
-### Explore species sensitivity to fishing: 
-
-ASK - how to setup fishing one species at a time in a loop? 
-
-This part is essential to assess species interactions. Now we fish one species at a time and see how that will affect the community. How do we visualise the output matrix?
-
-```{r, eval = F}
-tmax = tmax
-fish.mort <- 0.2
-
-relbiomFishOne <- data.frame()
-
-for (i in 1:length(params@species_params$species)) {
-
-#set up the effort array
-eff_arr = array(0, dim = c(tmax,length(params@species_params$species)))
-rowtest <- as.character(seq(from = 1, to = tmax))  #names of rows
-dimnames(eff_arr) = list(rowtest, params@species_params$gear)
-eff_arr[,i] <- fish.mort
-
-#run the model with fishing using previously set params set
-tasm1ef1 <- project(params, t_max = tmax, effort=eff_arr, dt = 0.2, diet_steps = 0)  
-plot(tasm1ef1)
-
-print(round(getBiomass(tasm1ef1)[tmax,]/getBiomass(tasm1)[tmax,],5))
-
-temp <- round(getBiomass(tasm1ef1)[tmax,]/getBiomass(tasm1)[tmax,],5)
-relbiomFishOne <- rbind(relbiomFishOne, temp)
-
-}
-
-colnames(relbiomFishOne) <- params@species_params$species #biomasses of species as you fish species in rows
-rownames(relbiomFishOne) <- paste("fish_",params@species_params$species, sep="")
-
-#save(relbiomFishOne, file = "../outputs/FishOneSppBiom_Nov20.RData")
-
-knitr::kable(relbiomFishOne, digits = 2)
-
-#look at how each species responds to fishing individual species
-responseToF <- diag(as.matrix(relbiomFishOne))
-which(responseToF < 0.4)
-
-## explore correlations among species, etc
-## Look if biomass of one species (T_caudimaculatus in my case) is strongly correlated to other species
-#cor_Tra <- rep(NA, 17)
-#p_Tra <- rep(NA, 17)
-
-#for (i in 1:length(params@species_params$species)) {
-#onesp <- relbiomFishOne[,i]
-#temp <- cor.test(relbiomFishOne$T_caudimaculatus, onesp)
-#cor_Tra[i] <- temp$statistic
-#p_Tra[i] <- round(temp$p.value,5)
-#}
-#trach_inter <- cbind(as.character(mariaParams$species), round(cor_Tra,3), round(p_Tra,4))  
-
-
-```
-
-### ################
-
-```{r, eval = F}
-## data for invertebrate abundances
-load(file = "modelParams/BenticInvAbund_Tasm.RData")
-
-## expected abundance using the equation applied to the weight groups used in mizer
-obsab <- 0.8 - 0.85*log10(params@w_full) 
-
-# Modeled abundance of benthos per size class
-#length(params@dw_full[c(min(which(params@w_full > min_w_bb)):max(which(params@w_full < w_bb_cutoff)))])
-modbb <- log10(params@initial_n_bb * params@dw_full) 
-modpl <- log10(params@initial_n_pp * params@dw_full)
-modaa <- log10(params@initial_n_aa * params@dw_full)
-
-plot(log10(params@w_full), obsab, type = 'l', lwd = 1.5, xlim = c(-6,2), ylim = c(-3, 5), main = "Slopes of initial benthic abundance versus observed abundance", xlab = "Log10, w, g", ylab = "Log10(Abundance per m2")
-points(log10(params@w_full), modbb, type = 'l', col = 'red')
-points(log10(params@w_full),modpl, type = 'l', col = 'green')
-points(log10(params@w_full),modaa, type = 'l', col = 'blue')
-#abline(v = log10(0.05), lty = 2)
-abline(v = log10(min_w_bb), lty =2)
-
-```
-
-### Get FMSY
-F and max sustain yield should be at around 0.2 if no other info is available (higher for small species). If it is too low it means reproduction is not fast enough, and we need to increase RDI/RDD ratio or decrease linear dependence on stock biomass. 
-This takes a while to run!
-
-NOTE: THE run is saved, so make sure to load the file rather than run everything again 
-
-```{r}
-#might beed to run it for longer for biomasses to stabilise
-tmax = 200
-yield_final <- data.frame()
-eff_vector1 = seq(from = 0.01, to = 0.09, by = 0.01)
-eff_vector2 = seq(from = 0.1, to = 0.2, by = 0.02)
-eff_vector3 = seq(from = 0.25, to = 0.95, by = 0.05)
-eff_vector = c(eff_vector1, eff_vector2, eff_vector3)
-
-for (i in 1:length(eff_vector)) {
-  print("eff_number")
-  print(i)
-  yield_array <- as.data.frame(matrix(ncol = 17, nrow = tmax))
-  colnames(yield_array) <- mariaParams$species
-  
-  eff.now <- eff_vector[i]
-  yield_array$fishing <- eff.now
-  yield_array$year <- c(1:tmax)
-  
-  for (b in 1:length(mariaParams$species)) {
-    print("sp_no")
-    print(b)
-    #Setup effort array
-    eff_arr = array(0, dim = c(tmax,17))
-    rowtest <- as.character(seq(from = 1, to = tmax))  #names of rows
-    dimnames(eff_arr) = list (rowtest, params@species_params$gear)
-    eff_arr[,b] <- eff.now
-    
-    tasm1ef <- project(params, t_max = tmax, effort=eff_arr, dt = 0.2, diet_steps = 0)
-    yield <- getYield(tasm1ef)
-    yield_array[,b] <- yield[,b]
-    
-  }
-  
-  yield_final <- rbind(yield_final, yield_array)   
-  
-}   
-
-#save(yield_final, file = "../outputs/yield001to095.RData")
-```
-
-something does not work here, need to check:
-```{r}
-## check if yields have stabilised for a given fishing level
-load(file = "../outputs/yield001to07_lessDD.RData")
-
-#which(yield_final$fishing == 0.2)
-#test <- yield_final[-c(4001:4250),] #0.2 mort was used two times so remove some rows
-#test2 <- test[-c(2251:2500),]
-
-oneeffort <- yield_final %>% filter (fishing == 0.9) ## decide which fishign level to use
-par(mfrow = c(4,5), mar = c(1,1,1,1))
-
-for (i in 1:length(mariaParams$species)) {
-  onespp <- oneeffort[,i]
-  plot(x = c(1:length(onespp)), y = onespp, type= 'l', ylim = c(0, max(onespp)))
-}
-
-ind <- seq(from = 200, to = 6000, by = 200)
-
-yieldF <- yield_final[ind,]
-
-par(mfrow = c(1,1), mar = c(3,4,3,3))
-
-plot(eff_vector,yieldF[,17], type = 'l')
-mariaParams$species
-
-
-## get the actual F at max yield
-fmsy = rep(NA, length(mariaParams$species))
-
-for (i in 1:length(mariaParams$species)) {
-  
-fmsy[i] <- yieldF$fishing[which(yieldF[,i] == max(yieldF[,i]))]
-}
-
-MaxYield <- list()
-MaxYield$fmsy <- as.vector(fmsy)
-MaxYield$species <- as.character(mariaParams$species)
-MaxYield$erepro <- round(mariaParams$erepro,3)
-MaxYield$sensitivity <- as.character(mariaParams$sensitivity)
-MaxYield <- as.data.frame(MaxYield)
-
-write.csv(MaxYield, file = "../outputs/Fmsy.csv")
-
-```
-#Plot all sizespectra at a chosen time
-
-```{r warning=FALSE, message=FALSE, echo=T}
-par(mfrow = c(1,1), mar = c(4,4,4,4))
-
-tplot = 150 #which time to plot
-
-model <- tasm1
-
-#plot size spectra
-plot(log10(model@params@w_full), log10(model@n_pp[tplot,]*params@dw_full), type = 'l', ylim = c(-10,10), xlim = c(-5,5),lwd = 2, xlab = 'size, g', ylab = 'abundance')
-points(log10(model@params@w_full), log10(model@n_bb[tplot,]*params@dw_full), type = 'l', lwd = 2, col = 'red')
-points(log10(model@params@w_full), log10(model@n_aa[tplot,]*params@dw_full), type = 'l', lwd = 1, col = 'green')
-
-for (i in 1: length(params@species_params$species)) {
-  points(log10(model@params@w), log10(model@n[tplot,i,]*params@dw), type = 'l')
-  
-}
-
-ppatmat = log10(mariaParams$w_mat/mariaParams$beta) # prefered prey size at predators maturation size
-abline(v = c(ppatmat), lty = 2, col = 'grey')
-
-abline(v = log10(mariaParams$w_mat), lty = 2, col = 'yellow')
-
-```
-
-### Backgr mort: functions 
-
-```{r}
-## need to pass functions separately
-
-getBenthosMort <- function(object, n, n_pp, n_bb, n_aa, intakeScalar,
-             pred_rate = getPredRate(object, n = n, n_pp = n_pp, n_bb = n_bb, n_aa = n_aa, intakeScalar = intakeScalar)) {
-    temp <- matrix(object@species_params$avail_BB, nrow = 1, ncol = length(object@species_params$avail_BB), byrow = T)
-    m2_benthos <- temp %*% pred_rate
-    return(m2_benthos)
-}
-
-
-getPlanktonMort <- function(object, n, n_pp, n_bb, n_aa, intakeScalar,
-             pred_rate = getPredRate(object, n = n, n_pp = n_pp, n_bb = n_bb, n_aa = n_aa, intakeScalar = intakeScalar)) {
-
-    temp <- matrix(object@species_params$avail_PP, nrow = 1, ncol = length(object@species_params$avail_PP), byrow = T)
-    m2_plankton <- temp %*% pred_rate
-
-    return(m2_plankton)
-}
-
-getAlgalMort <- 
-  function(object, n, n_pp, n_bb, n_aa, intakeScalar,
-           pred_rate = getPredRate(object, n = n, n_pp = n_pp, n_bb = n_bb, n_aa = n_aa, intakeScalar = intakeScalar)) {
-        temp <- matrix(object@species_params$avail_AA, nrow = 1, ncol = length(object@species_params$avail_AA), byrow = T)
-    m2_algae <- temp %*% pred_rate
-    
-    return(m2_algae)
-  }
-```
-
-### Benthos mort
-
-```{r}
-tasm1 <- tasm1 #put your model name here
-params <- params
-tmax <- tmax #time to plot
-
-## Benthos 
-#get ranges for plotting 
-w_full_bb <- params@w_full[which(params@w_full > min_w_bb & params@w_full < w_bb_cutoff)]
-#dw_full_bb <- params@dw_full[which(params@w_full > min_w_bb & params@w_full < w_bb_cutoff)]
-
-## to run the line below you need to run the functions in the chunk above!
-ben_mort <- getBenthosMort(params, n = tasm1@n[tmax,,], n_pp = tasm1@n_pp[tmax,],n_bb = tasm1@n_bb[tmax,],n_aa = tasm1@n_aa[tmax,],intakeScalar = tasm1@intTempScalar[,,(tmax/dt)])
-
-ben_mort <- getBenthosMort(params, n = tasm1@n[tmax,,], n_pp = tasm1@n_pp[tmax,],n_bb = tasm1@n_bb[tmax,],n_aa = tasm1@n_aa[tmax,],intakeScalar = tasm1@intTempScalar[,,(tmax/dt)])
-
-#only get relevant size ranges
-ben_mort <- ben_mort[which(params@w_full > min_w_bb & params@w_full < w_bb_cutoff)]
-
-#plot
-plot(log(w_full), ben_mort, type = 'l', lwd = 2, main = "Inst benthos mortality rate per year", xlab = "log size, g", ylab = "mortality 1/years")
-```
-
-### Plankton mort 
-
-```{r}
-tasm1 <- tasm1 #put your model name here
-params <- params
-tmax <- tmax #time to plot
-
-#get ranges for plotting 
-w_full_pp <- params@w_full[which(params@w_full > min_w_pp & params@w_full < w_pp_cutoff)]
-#dw_full_pp <- params@dw_full[which(params@w_full > min_w_pp & params@w_full < w_pp_cutoff)]
-
-pla_mort <- getPlanktonMort(params, n = tasm1@n[tmax,,], n_pp = tasm1@n_pp[tmax,],n_bb = tasm1@n_bb[tmax,],n_aa = tasm1@n_aa[tmax,],intakeScalar = tasm1@intTempScalar[,,(tmax/dt)])
-
-#only get relevant size ranges
-pla_mort <- pla_mort[which(params@w_full > min_w_pp & params@w_full < w_pp_cutoff)]
-
-#plot
-plot(log(w_full_pp), pla_mort, type = 'l', lwd = 2, main = "Inst plankton mortality rate per year", xlab = "log size, g", ylab = "mortality 1/years")
-```
-
-
-### Algal mort
-
-```{r}
-tasm1 <- tasm1 #put your model name here
-params <- params
-tmax <- tmax #time to plot
-
-#get ranges for plotting 
-w_full_aa <- params@w_full[which(params@w_full > min_w_aa & params@w_full < w_aa_cutoff)]
-
-alg_mort <- getAlgalMort(params, n = tasm1@n[tmax,,], n_pp = tasm1@n_pp[tmax,],n_bb = tasm1@n_bb[tmax,],n_aa = tasm1@n_aa[tmax,],intakeScalar = tasm1@intTempScalar[,,(tmax/dt)])
-
-#only get relevant size ranges
-alg_mort <- alg_mort[which(params@w_full > min_w_aa & params@w_full < w_aa_cutoff)]
-
-#plot
-plot(log(w_full_aa), alg_mort, type = 'l', lwd = 2, main = "Inst algal mortality rate per year", xlab = "log size, g", ylab = "mortality 1/years")
-
-
-```
-
-### starv mort function
-
-```{r}
-
-getSMort <- function(object, n, n_pp, n_bb, n_aa, intakeScalar, metScalar,
-                     e = getEReproAndGrowth(object, n = n, n_pp = n_pp, n_bb = n_bb, n_aa = n_aa, intakeScalar = intakeScalar, metScalar = metScalar)){
-
-            if (!all(dim(e) == c(nrow(object@species_params), length(object@w)))) {
-              stop("e argument must have dimensions: no. species (",
-                   nrow(object@species_params), ") x no. size bins (",
-                   length(object@w), ")")
-            }
-
-        mu_S <- e # assign net energy to the initial starvation mortality matrix
-
-        #x_old <- t(t(mu_S)/(0.1*object@w)) # apply the mortality formula to the whole matrix
-        #print (dim(x_old))
-        #print(x_old[c(3:6, 50:60)])
-        #remember, 0.1 is a parameter here, which is a scaling constant on how negative e translates to starvation mortality. For a 100g fish with a negative e of -1, it will give starvation value of 0.1. For a 10 g fish with e of -1, it will give mortality of 1. This seems reasonable for a start, but a more conmplex relationship could be explored in the future 
-        ### TODO ### a small value added here to avoid division by zero, but not sure this is ideal
-        x <- t(t(mu_S)/((1/(object@c+1e-12))*object@w))
-        #print (dim(x))
-        #print(x[c(3:6, 50:60)])
-        mu_S[mu_S<0] <- x[x<0] # replace the negative values of e by the starvation mortality
-        mu_S[mu_S>0] <- 0 # replace the positive values of e by 0
-
-        mu_S = - mu_S # this returns negative mortality values, because negative e is divided by weight. So to get the actual mortality we turn them into positive values 
-        #comment to test
-    return(mu_S)
-}
-
-```
-
-### Predation mort proportion: TODO
-
-```{r}
-sim <- tasm1
-
-final_time_idx <- dim(sim@n)[[1]]
-n <- sim@n[final_time_idx, , ]
-n_pp <- sim@n_pp[final_time_idx, ]
-n_bb <- sim@n_bb[final_time_idx, ]
-n_aa <- sim@n_aa[final_time_idx, ]
-
-#test <- getPredMort(sim@params, n, n_pp, n_bb, n_aa, intakeScalar = sim@intTempScalar[,,(final_time_idx/dt)])
-
-total_pred_mort <- rowSums(getPredMort(sim@params, n, n_pp, n_bb, n_aa, intakeScalar = sim@intTempScalar[,,(final_time_idx/dt)]) * n)
-total_starv_mort <- rowSums(getSMort(sim@params, n, n_pp, n_bb, n_aa, intakeScalar = sim@intTempScalar[,,(final_time_idx/dt)], metScalar = sim@metTempScalar[,,(final_time_idx/dt)]) * n)
-
-total_mort <- rowSums(getMort(sim@params, n, n_pp, n_bb, n_aa, intakeScalar = sim@intTempScalar[,,(final_time_idx/dt)], morScalar = sim@morTempScalar[,,(final_time_idx/dt)], metScalar = sim@metTempScalar[,,(final_time_idx/dt)], effort = 0) * n)
-
-total_mort <- rowSums(getMort(sim@params, n, n_pp) * n)
-proportion <- total_pred_mort / total_mort
-st_proportion <- total_starv_mort / total_mort
-
-
-```
-
-
-
-### Background depletion 
-
-In the stabilised set of parameters, where initial abundances are set from final abundances the depletion is of course 1, because everything is stable 
-
-```{r warning=FALSE, message=FALSE, echo=T}
-
-model <- tasm1
-
-smallcut <- max(which(model@params@w_full < min_w_bb)) +1
-largecut <- min(which(model@params@w_full > w_bb_cutoff)) -1
-
-largecutP <- min(which(model@params@w_full > w_pp_cutoff)) -1
-
-smallcutA <- max(which(model@params@w_full < min_w_aa)) +1
-largecutA <- min(which(model@params@w_full > w_aa_cutoff)) -1
-
-plot(log10(model@params@w_full[c(smallcut:largecut)]), (model@n_bb[tmax,c(smallcut:largecut)]/model@n_bb[1,c(smallcut:largecut)]),ylim = c(0,1.5), xlim = c( log10(model@params@w_full[1]), log(model@params@w_full[largecutA])), type = 'l', col = 'red', xlab = "log weight,g", ylab = "depletion compared to initial abundance", main = "Depletion of plankton, benthos(red) and algae(green)")
-points(log10(model@params@w_full[c(1:largecutP)]), (model@n_pp[tmax,c(1:largecutP)]/model@n_pp[1,c(1:largecutP)]),type = 'l', col = 'black')
-points(log10(model@params@w_full[c(smallcutA:largecutA)]), (model@n_aa[tmax,c(smallcutA:largecutA)]/model@n_aa[1,c(smallcutA:largecutA)]),type = 'l', col = 'green')
-
-
-```
-
-### Get RDD/rmax
-
-This tells you where the species are on their rmax level, but I found that this is not necessarily an indication of their sensitivity to fishing...
-
-```{r warning=FALSE, message=FALSE, echo=T}
-
-#Check where they are at rmax level
-tmax =tmax
-model <- tasm1
-
-a1 <- getRDI(params,model@n[tmax,,],model@n_pp[tmax,], model@n_bb[tmax,], model@n_aa[tmax,], model@intTempScalar[,,(tmax/dt)], model@metTempScalar[,,(tmax/dt)])
-
-#get RDD 
-a2 <- getRDD(params,model@n[tmax,,],model@n_pp[tmax,], model@n_bb[tmax,], model@n_aa[tmax,], sex_ratio = 0.5, model@intTempScalar[,,(tmax/dt)], model@metTempScalar[,,(tmax/dt)])
-
-#get RDD to rmax ratio
-rmaxratio <- a2/mariaParams$r_max
-#plot(rmaxratio)
-round(rmaxratio,4)
-round(a1/a2, 4)
-
-
-```
-
-### Sp params
-
-Write species params for the publication 
-
-```{r}
-para <- params@species_params
-
-sppPprint <- para %>% select(species, w_inf, w_min, w_mat, beta, sigma, avail_PP, avail_BB, avail_AA, r_max, erepro, gamma, ks, h, z0)
-
-sppPprint[,10] <- round(sppPprint[,10],5)
-sppPprint[,11] <- round(sppPprint[,11],4)
-sppPprint[,c(12:14)] <- round(sppPprint[,c(12:14)],2)
-sppPprint[,15] <- round(sppPprint[,15],3)
-
-write.csv(sppPprint, file = "../suplTables/TableSppParams2.csv")
-
-
-```
-
-##### ###########
 
