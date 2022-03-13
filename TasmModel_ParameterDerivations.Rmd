@@ -1,0 +1,618 @@
+---
+title: "Setting up species, their parameters and resource parameters for the SE Tasmanian model"
+author: "Asta Audzijonyte et al."
+date: "2019-Nov-7"
+output: html_document
+---
+### clear memory
+
+```{r}
+
+rm(list=ls())
+
+```
+
+### Load libraries
+
+```{r warning=FALSE, message=FALSE, warning=FALSE, echo=F}
+#list.files()
+
+#devtools::install_github("james-thorson/FishLife")
+list.of.packages <- c("tidyverse", "dplyr", "ggplot2", "ggmap", "vegan", "reshape2", "cowplot", "factoextra", "data.table", "googleway", "ggrepel", "ggspatial", 
+    #"libwgeom", 
+    "sf", 
+    "rnaturalearth", 
+    "rnaturalearthdata",
+    "rgeos")
+
+new.packages<- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+lapply(list.of.packages, require, character.only = TRUE)
+
+```
+
+### Load datafiles
+
+```{r warning=FALSE, message=FALSE, eval=T, echo = F} 
+FBdata <- read.csv(file = "datasets/FBlifehistory.csv")
+diet = read.csv (file = "datasets/dietpred.csv")
+ComNames = read.csv(file = "datasets/SpeciesCommonNames.csv")
+#Lmax values for model species
+Lmax = read.csv(file = "datasets/CorrectLmax.csv")
+#length weight relationships 
+lw <- read.csv(file = "datasets/SpeciesLW.csv")
+
+#load file from earlier analyses (2 years ago!)
+load(file = "datasets/ModelSpeciesSummary.RData")
+
+## summary about model species
+load(file = "datasets/ModelSpeciesSummary.RData")
+## more extensive model species summary
+load(file = "datasets/ModelSpeciesSummaryMore.RData")
+
+#Get DEB parameters 
+#get the data file and make a matrix
+load(file = 'datasets/debdata.Rda')
+
+```
+
+### Species params: Fishbase, diet prediction
+
+this chunk cannot be run as it requires full RLS and temperate reef collaboration dataset, but it is shown here to demonstrate exploration stages. Exploration summaries are saved at the end
+
+```{r, eval = F}
+
+ModelSpp <- ModelSpecies$TAXONOMIC_NAME
+
+#get maximum size from the survey data: surveys are selected for the model area
+
+  # MaxSize <- rls_bas %>%
+  #   filter (TAXONOMIC_NAME %in% ModelSpp) %>%
+  #     group_by (TAXONOMIC_NAME, year) %>% # maximum size observed in a year in a given Location
+  #       summarise (sizeMax = max(SizeClass)) %>% 
+  #         group_by(TAXONOMIC_NAME) %>%
+  #           top_n(3, sizeMax) %>% summarise (MaxSizeMed = median(sizeMax))
+  
+ModelSpecies <- full_join(ModelSpecies, MaxSize, by = "TAXONOMIC_NAME")
+  
+ModelSpecies$therm_count <- thermal$count[match(ModelSpecies$TAXONOMIC_NAME, thermal$SPECIES_NAME)] 
+ModelSpecies$CTMq05 <- thermal$CTMq05[match(ModelSpecies$TAXONOMIC_NAME, thermal$SPECIES_NAME)]
+ModelSpecies$CTMq95 <- thermal$CTMq95[match(ModelSpecies$TAXONOMIC_NAME, thermal$SPECIES_NAME)]
+ModelSpecies$midpoint <- thermal$MP..5.95.[match(ModelSpecies$TAXONOMIC_NAME, thermal$SPECIES_NAME)]
+ModelSpecies$comname <- ComNames$COMMON_NAME[match(ModelSpecies$TAXONOMIC_NAME, ComNames$TAXONOMIC_NAME)]
+
+## next add parameters for length-weight conversion 
+ModelSpecies$LWa <- lw$A[match(ModelSpecies$TAXONOMIC_NAME, lw$SPECIES)] 
+ModelSpecies$LWb <- lw$B[match(ModelSpecies$TAXONOMIC_NAME, lw$SPECIES)]
+
+#the median Lmax estimation is not always good, so I have a datafile corrected by experts
+ModelSpecies$LmaxCor <- Lmax$LmaxCorrect[match(ModelSpecies$TAXONOMIC_NAME, Lmax$TAXONOMIC_NAME)]
+ModelSpecies$vbKcor <- Lmax$Kvb_correct[match(ModelSpecies$TAXONOMIC_NAME, Lmax$TAXONOMIC_NAME)]  
+
+##Now add parameters from the fishbase lifeHistory tool 
+#first select only species that are in the model 
+
+ModelSppFB <- FBdata %>% filter (TAXONOMIC_NAME %in% ModelSpp)
+ModelSpp_Fishbase <- full_join(ModelSpecies, ModelSppFB, by = "TAXONOMIC_NAME")
+
+ModelSpecies$vbKfb <- ModelSppFB$K[match(ModelSpecies$TAXONOMIC_NAME, ModelSppFB$TAXONOMIC_NAME)] 
+ModelSpecies$Lmaxfb <- ModelSppFB$Lmax[match(ModelSpecies$TAXONOMIC_NAME, ModelSppFB$TAXONOMIC_NAME)] 
+
+### and now add the diet prediction data 
+#First create vectors for all the species and genera for which we have diet predictiton data 
+dietSpecies = as.character(unique(diet$Species))
+dietGenera = as.character(unique(diet$Genus))
+#dietFamily = unique(dietData$Family)
+
+## and the same for model species
+ModelSpecies$genus <- rls_bas$GENUS[match(ModelSpecies$TAXONOMIC_NAME, rls_bas$TAXONOMIC_NAME)]
+
+ModelGenera <- as.character(unlist(unique(ModelSpecies$genus)))
+#ModelSpecies <- as.character(unlist(unique(ModelSpecies$TAXONOMIC_NAME)))
+#ModelFamily <- unique(MarVerts$Family)
+
+#ModelGenera[which(ModelGenera %in% dietGenera)] #all model genera are in 
+#ModelSpecies[which(ModelSpecies %in% dietSpecies)]
+#ModelFamily[which(ModelFamily %in% dietFamily)]
+
+## from the large diet PREDICTION matrix extract only information relevant to the model species and genera and size groups of fish consumers
+ModelDiets <- diet %>% filter(Species %in% ModelSpp) %>% group_by(WWtr, MainPrey, Species) %>% summarise (fish = n_distinct(Fish), dietProp = sum(pDietpc)/fish, preyWmean = mean(preyWW), preyWsd = sd(preyWW), preySmean = mean(predictdietsize.mm.), preySsd = sd(predictdietsize.mm.), MR = mean(ppmr), LR =mean(pplr), fromSp = first(fromSp), fromGe = first(fromGe), fromFa = first(fromFa)) #%>% filter(fish>5) %>% filter (dietProp > 5)
+
+#get total number of size groups available in the diet prediction data  for all model species. it would be better to simply use the diet prediction code to run for the range of model size groups. But at the moment we are using outputs generated from the diet prediction code to the RLS observations in Tasmania. Given that predictions are very general this is sufficient for now 
+NofSG <- diet %>% filter(Species %in% ModelSpp) %>% group_by(Species) %>% summarise(sizeGr = n_distinct(WWtr))
+
+ModelDiets2 <- full_join(ModelDiets, NofSG, by ="Species")
+ 
+#Get a summary of diet predictions for species and prey types. What is the predicted proportion and PPMR of different prey types for model species 
+MeanModelDiets <- ModelDiets2 %>% group_by(Species, MainPrey) %>% summarise(NoFish = sum(fish), NoFishSizeGroups = n_distinct(WWtr), meanWgtFish = mean(WWtr), sdWgtFish = sd(WWtr), dietProp = round(sum(dietProp)/first(sizeGr),0), PPMRmean = round(mean(MR),0), PPMRsd = round(sd(MR, na.rm = T),0), fromSp = first(fromSp), fromGe = first(fromGe), fromFa = first(fromFa), ) #get correct diet proporton in %
+
+rm(ModelDiets, ModelDiets2, NofSG)
+
+#Mean model diets shows the proportion of various diets 
+
+SpeciesPPMR <- MeanModelDiets %>% group_by(Species) %>% summarise(dietTypes = n_distinct(MainPrey), MRmean = round(mean(PPMRmean),0), MRsd = round(mean(PPMRsd, na.rm = T),0), fromSp = first(fromSp), fromGe = first(fromGe), fromFa = first(fromFa))
+SpeciesPPMR$dietConf <- SpeciesPPMR$fromSp + SpeciesPPMR$fromGe + SpeciesPPMR$fromFa
+
+ModelSpecies$PPMRmean <- SpeciesPPMR$MRmean[match(ModelSpecies$TAXONOMIC_NAME, SpeciesPPMR$Species)] 
+ModelSpecies$PPMRsd <- SpeciesPPMR$MRsd[match(ModelSpecies$TAXONOMIC_NAME, SpeciesPPMR$Species)]
+ModelSpecies$dietConf <- SpeciesPPMR$dietConf[match(ModelSpecies$TAXONOMIC_NAME, SpeciesPPMR$Species)]
+
+#FishBenDiets <- MeanModelDiets %>% filter(MainPrey == "epif" | MainPrey == 'epcr' | MainPrey == "fish" | MainPrey == 'plcr') %>% group_by (Species, MainPrey) %>% summarise (MRmean = mean(MRmean), MRsd = mean(MRsd))
+
+#save(ModelSpecies, file = "../inputs/ModelSpeciesSummaryMore.RData")
+
+```
+
+### Estimating h: maximum intake coefficient
+
+Daily food intake for all RLS species has been calculated by Soler et al. (2014) based on diets, sizes and average site temperature. The equation is from Palomares and Pauly (1989) and is empirically derived: 
+lnQ/B = −0.1775 − 0.2018 lnW + 0.6121 lnT + 0.5156 lnA + 1.26F
+where Q/B is the % intake per day, A is the aspect ratio of the tail and F is set to 1 for carnivorous fish and 0 for all other fish. The values of daily intake in these calculations varies around 1-8% for differenet species and sizes, but is bigger for herbivores. These values are generally consistent with experimental feeding rates
+
+We can use the estimates for a simple body size intake linear regression, that will give us allometric relationship between consumption and body size (constant and exponent). Note, these intake values are realised intakes ant not the maximum intake. So we need to correct them for the feeding level to get to the maximum intake. If we make various assumptions about the feeding level we could infer the maximum intake rate at different body sizes. For this we assume that feeding level changes smoothly and monotonically with body size. This is not entirely true as some sizes might experience drops in feeding level, but for a general approximation it will do
+
+#### h for model species only
+
+```{r warning=FALSE, message=FALSE, warning=FALSE, echo=F}
+# load(file = "../inputs/ModelSpeciesSummaryMore.RData")
+# #diet predictions from German Soler et al. 2018
+# diet = read.csv (file = "../inputs/dietpred.csv")
+
+#assumptions about food limitation 
+f_min = 0.6 # assumed value for feeding level at minimum body size
+f_max = 0.9 # assumed value for feeding level at maximum body size
+m1_1 = 0.15 #steepness value to give a smooth curve 
+
+#check how the curve looks: 
+ww_inf = 1000 #let's say maximum body size is 1000g
+ww = seq(from = 0, to = ww_inf)
+foodlim1 <- f_min + (f_max-f_min)*exp(-m1_1*(ww_inf/ww)) # food satiation versus body size 
+#this is how feeding level could increase with body size at the intraspecific level 
+plot(ww, foodlim1, type = 'l')
+
+#get Wmax for all model species
+ModelSpecies$Wmax <- ModelSpecies$LWa * ModelSpecies$Lmax^ ModelSpecies$LWb
+
+## list of model species
+ModelSpp <- ModelSpecies$TAXONOMIC_NAME
+
+# loop through the list of model species, fit linear regression between food consumed (in grams) and consumers body weight 
+ConsEst <- list()
+
+for (i in 1:length(ModelSpp)) {
+  
+Intake <- diet %>% filter (Species %in% ModelSpp[i])
+
+Intake$Wmax <- ModelSpecies$Wmax[match(Intake$Species, ModelSpecies$TAXONOMIC_NAME)]
+
+#linear regression to estimate daily consumption - weight relationship
+# daily consumption is predicted based on the equation above
+temp = lm(log(Intake$FoodCons) ~ log(Intake$WWtr))
+ConsEst$coef[i] <- exp(temp$coefficients[[1]])
+ConsEst$exp[i] <- temp$coefficients[[2]]
+
+# the consumption estimates above are realised intake, not maximum intake. To get maximum intake we have to assume some level of food limitation. Let's assume that food limiation or satiation changes with body size as outlined above. Now add a column of feeding level to the data set. It will depend on the ratio between body size to maximum size 
+Intake$foodlim <- f_min + (f_max-f_min)*exp(-m1_1*(Intake$Wmax/Intake$WWtr))
+
+#Now the maximum consumption would simply be the ratio from the estimated consumption by food limitation
+maxcon = Intake$FoodCons/Intake$foodlim
+# and we can fit a regression on how max consumption  scales with body size 
+temp2 = lm(log(maxcon) ~ log(Intake$WWtr))
+
+#Save the coefficient and exponents values (transformed from the log log scale to that used in the model)
+ConsEst$coefMax[i] <- exp(temp2$coefficients[[1]])
+ConsEst$expMax[i] <- temp2$coefficients[[2]]
+ConsEst$TAXONOMIC_NAME[i] <- ModelSpp[i]
+}
+
+# Add these values into the final data file. Note the coefficient is divided by 100
+ModelSpecies$ConsConst <- (ConsEst$coef[match(ModelSpecies$TAXONOMIC_NAME, ConsEst$TAXONOMIC_NAME)])/100
+ModelSpecies$ConsExp <- ConsEst$exp[match(ModelSpecies$TAXONOMIC_NAME, ConsEst$TAXONOMIC_NAME)] 
+ModelSpecies$ConsConstMax <- (ConsEst$coefMax[match(ModelSpecies$TAXONOMIC_NAME, ConsEst$TAXONOMIC_NAME)])/100
+ModelSpecies$ConsExpMax <- ConsEst$expMax[match(ModelSpecies$TAXONOMIC_NAME, ConsEst$TAXONOMIC_NAME)] 
+
+## Note the exponent of daily food consumption with body weight is 0.79-0.81
+round(ModelSpecies$ConsExpMax, 2)
+
+## consumption constant (higher for two herbivore species)
+round(ModelSpecies$ConsConstMax, 2) 
+
+#or get annual values, as used in mizer
+round(ModelSpecies$ConsConstMax, 2)*365
+
+##
+##Alternatively, we could use default mizer estimations of h from Blanchard et al. 2004 (?). They use Winf and von Bertalanffy K.
+K_vb = ModelSpecies$vbKfb # VB k value from fishbase
+K_vbC = ModelSpecies$vbKcor #Vb k value from literature on specific species or talking to experts. You can see how different it can be!
+Winf = ModelSpecies$Wmax
+
+#assumed feeding level
+f0 = 0.8
+alpha = 0.6*0.6 #here we account for 0.6 assimilation efficiency and 0.6 growth cost (inefficiency)
+
+ModelSpecies$h_mizer = (3*K_vb)/(alpha*f0) * Winf^(1/3)
+ModelSpecies$h_mizerC = (3*K_vbC)/(alpha*f0) * Winf^(1/3)
+
+#plot(ModelSpecies$Wmax, ModelSpecies$h_mizer)
+
+ConsParams <- ModelSpecies %>% select (TAXONOMIC_NAME, ConsExp, ConsExpMax, ConsConst, ConsConstMax, LmaxCor, vbKcor, Lmaxfb, vbKfb, PPMRmean, PPMRsd, dietConf, h_mizer, h_mizerC, Wmax) %>% mutate(ConsConstMaxY = ConsConstMax*365) 
+
+knitr::kable(ConsParams, digits = 3)
+
+```
+
+The summary from analyses above shows that assuming feeding level of about 0.6 across all body size and using empirical equation based daily intake values, we get the h value of about 50 g/g^n/year for most species and ca 150 g/g^n/year for herbivores. The estimated maximum consumption exponent n is around 0.8, which is much higher than DEB or mizer assumptions of 2/3. To get the maximum intake exponent to be close to 2/3 and still match the daily intake estimates from the Pauly and Palomares equation (or other empirical studies), we need to assume that for many fish species feeding level increases with body size from 0.5 to somewhere around 0.9. In this case the fitted exponent is ca 0.7-0.75 and h is 40-60 g/g^n/year (ConsConstMaxY column) and 200 g/g^n/year in herbivores. You can see that if you play with the feeding level assumptions above
+
+If we use mizer default h estimation (based on alpha, VB_k and feeding level) we find that it is extremely sensitive to the VB k parameter, which is highly uncertain in our species. So the h estimate can vary between 30 and 170 for the same species, because k estimates for this species vary between 1.4 to 0.26! However for species where k values seem reasonabble (e.g. Notolabrus) the mizer default values are about half of what we get based on daily intake estimation (ca 20-30 g/g^n/year for mizer default compared to 40-60 g/g^n/year for my estimations). If we reduce alpha from 0.6 to 0.6*0.6 (which now accounts both for assimilation efficiency and growth conversion cost used in this study)and increase the feeding level to 0.8 we still get h values about 50% lower than the estimates based on empirical intake assumptions. 
+
+Next, we can compare these estimates of h to the Dynamic Energy Budget (DEB) theory. DEB assumes that intake is always at maximum (feeding level =1). The range of surface area specific maximum assimilation rate in DEB ranges at 0.06-0.19 g cm-2 day-1 (DEB online database, Kooijman and Lika, 2014), which is approximately 0.06-0.2 g/g^n/day or 20-73 g/g^n/year given that DEB and mizer assumptions that maximum intake scales with body sizes to the power of 2/3. In fish growth model (Audzijonyte & Richards, 2018) intake is determined by structural weight only, so the mass specific constant is higher than in models where intake is based on total weight. The constant is 0.1 g/g^n/day (or 36.5 g/g^n/year) and leads to emergent daily intake of 0.5-4%  (assuming assimilation efficiency of 0.7-0.8). In mizer default assimilation rates are slightly lower (0.6) so the maximum intake rate should be a bit higher, or closer to 40-50g/g^n/year. Indeed, in the standard community model of mizer the maximum food intake constant h = 40 g/g/year (Hartvig et al. 2011), which is very similar to the estimate from the daily food intake or from DEB. This suggests that at least for the model species mizer default calculations would give h values that are too low, and we should aim for the h values that are in the range of 40-50g/g^n/year. 
+
+#### h to Wmax across many species
+
+Now we can repeat similar analyses for the entire list of species in the Soler et al. dataset
+
+```{r}
+#assumptions 
+f_min = 0.5 # assumed value for feeding level at minimum body size
+f_max = 0.9 # assumed value for feeding level at maximum body size
+m1_1 = 0.15 #steepness value to give a smooth curve 
+
+
+AllSpp <- unique(diet$Species)
+#are there any na?
+length(which(is.na(diet$Lmax) == T))
+#get only data without NA for Lmax
+dietForRegr <- diet[which(is.na(diet$Lmax) == F),]
+length(which(is.na(dietForRegr$Lmax) == T))
+plot(unique(dietForRegr$Lmax))
+#now add LW data to get Wmax
+dietForRegr$LWa <- lw$A[match(dietForRegr$Species, lw$SPECIES)]
+dietForRegr$LWb <- lw$B[match(dietForRegr$Species, lw$SPECIES)]
+length(which(is.na(dietForRegr$LWa) == T))
+#now get Wmax 
+dietForRegr$Wmax <- dietForRegr$LWa*dietForRegr$Lmax^dietForRegr$LWb
+plot(unique(log(dietForRegr$Wmax)))
+#some species has too small wmax values, let's only use those that are biiger than 10
+dietForRegr <- dietForRegr[which(dietForRegr$Wmax > 10),]
+
+#list of species
+AllSpp <- unique(dietForRegr$Species)
+
+# loop through the list of model species, fit linear regression between food consumed (in grams) and consumers body weight 
+ConsEst <- list()
+
+for (i in 1:length(AllSpp)) {
+  
+Intake <- dietForRegr %>% filter (Species %in% AllSpp[i])
+
+#linear regression to estimate daily consumption - weight relationship
+# daily consumption is predicted based on the equation above
+temp = lm(log(Intake$FoodCons) ~ log(Intake$WWtr))
+ConsEst$coef[i] <- exp(temp$coefficients[[1]])
+ConsEst$exp[i] <- temp$coefficients[[2]]
+
+# the consumption estimates above are realised intake, not maximum intake. To get maximum intake we have to assume some level of food limitation. Let's assume that food limiation or satiation changes with body size as outlined above. Now add a column of feeding level to the data set. It will depend on the ratio between body size to maximum size 
+Intake$foodlim <- f_min + (f_max-f_min)*exp(-m1_1*(Intake$Wmax/Intake$WWtr))
+
+#Now the maximum consumption would simply be the ratio from the estimated consumption by food limitation
+maxcon = Intake$FoodCons/Intake$foodlim
+# and we can fit a regression on how max consumption changes scales with body size 
+temp2 = lm(log(maxcon) ~ log(Intake$WWtr))
+
+#Save the coefficient and exponents values (tranformed from the log log scale to that used in the model)
+ConsEst$coefMax[i] <- exp(temp2$coefficients[[1]])
+ConsEst$expMax[i] <- temp2$coefficients[[2]]
+ConsEst$TAXONOMIC_NAME[i] <- AllSpp[i]
+}
+
+ConsResAllSpp <- as.data.frame(cbind((ConsEst$coef/100), ConsEst$exp, (ConsEst$coefMax/100), ConsEst$expMax))
+ConsResAllSpp$Species <- AllSpp
+ConsResAllSpp$Wmax <- dietForRegr$Wmax[match(ConsResAllSpp$Species, dietForRegr$Species)]
+
+colnames (ConsResAllSpp) <- c("coef", "exp", "coefMax", "expMax", "Species", "Wmax")
+
+ConsResAllSpp <- ConsResAllSpp[which(is.na(ConsResAllSpp$expMax) == F),]
+
+round(ConsResAllSpp$exp,2)
+round(ConsResAllSpp$coef,3)
+round(ConsResAllSpp$expMax,2)
+mean(ConsResAllSpp$expMax)
+round(ConsResAllSpp$coefMax,2)
+#or yearly
+round(ConsResAllSpp$coefMax,2)*365
+mean((ConsResAllSpp$coefMax))
+
+#or for all species 
+plot(log(ConsResAllSpp$Wmax), (ConsResAllSpp$coefMax))
+
+#second regression to get h scaling with Wmax
+h_model <- lm(log(ConsResAllSpp$coefMax) ~ log((ConsResAllSpp$Wmax/1000)))
+
+#intercept exp(a) of the model
+exp(h_model$coefficients[[1]])
+#slope of the model
+h_model$coefficients[[2]]
+
+#to account for large number of herbivores we use slighly lower intercept and the final equation is 
+#mariaParams$h = 50 * (mariaParams$w_inf/1000)^0.15
+
+```
+
+### Estimating ks across species from DEB dataset
+
+By default in mizer and in many MSS model ks = h*0.12. This is based on the assumption that critical feeding level is 0.2 and that assimilation efficiency is 0.6. So intake will just cover the maintenance costs at the critical feeding level (0.6x0.2). For the h of 40g/g-q/year (see above) this would give ks values of 4.8 g/g-q/year  and, since h increases with maximum body size, ks would also be larger in large bodied fish. However, critical feeding level in small and large bodied species is unlikely to be similar and there is good evidence that "cost of life" of mass-specific metabolic rates are higher in small bodied species. 
+
+The average mass specific maintenance cost of structure at 20°C temperature in DEB is 20 J cm-3 day-1, but in slow growing vertebrates can be as low as 10 J cm-3 day-1 (Kooijman 2000). For the cod model we assumed maintenance of 10 J cm-3 day-1 (cold water), which translates to 0.003 g g-1 day-1, assuming 1g of structure mass equals 3000J and 1cm3 of wet weight is 1g (van der Veer et al. 2009). This translates to 1.1 g/g-q/year, but remember the exponent is 1 with structural mass. While reserves don’t need maintenance in DEB, the R pool here includes reserves and gonads and a small maintenance cost (cR) is used, set at 10% of cS. These values give an emergent total maintenance cost of an adult individual at 40-70% of its daily energy intake
+
+
+```{r}
+## here we use the DEB dataset (as it was in 2019, when model was being developed)
+Nspecies <- length(debdata$allStat)
+
+# get all values of p_M, v, and the species names
+SpNames <- vector(length = Nspecies)
+fam <- vector(length = Nspecies) 
+order <- vector(length = Nspecies)
+class <- vector(length = Nspecies)
+zoom <- vector(length = Nspecies) #zoom factor 21
+Fm <- vector(length = Nspecies) #Fm = max spec searching rate 22
+alfa <- vector(length = Nspecies) #alfa = digestion efficiency 23
+ffae <- vector(length = Nspecies) #ffae = food to feased efficiency 24 
+v <- vector(length = Nspecies) #v = energy conductance 25
+#kapppa <- vector(length = Nspecies) #kappa = allocaiton to soma 26
+p.M <- vector(length = Nspecies) #p.M = vol. spec som maintenance 28
+p.T <- vector(length = Nspecies) #p.T = surf specific somatic maint 29
+k.J <- vector(length = Nspecies)#k.J - maturity maint rate 30
+E.G <- vector(length = Nspecies) # E.G - spec cost of structure 31
+Arrh <- vector(length = Nspecies)#Arrh = arrhenius temp 36
+funcres <- vector(length = Nspecies)#funcres = functional response scaled 38
+
+#DEBparams = data.frame(NA, nrow = length(Nspecies), ncol = 8)
+
+for(i in 1:Nspecies){
+  
+SpNames[i] <- debdata$allStat[[i]][[1]]
+fam[i] <- debdata$allStat[[i]][[5]]
+order[i] <- debdata$allStat[[i]][[6]]
+class[i] <- debdata$allStat[[i]][[7]]
+zoom[i] <- debdata$allStat[[i]][[21]]
+Fm[i] <- debdata$allStat[[i]][[22]] # all the same. 6.5
+alfa[i] <- debdata$allStat[[i]][[23]] # mostly all at 0.8
+ffae[i] <- debdata$allStat[[i]][[24]] #all at 0.10
+v[i] <- debdata$allStat[[i]][[25]] # does not look that good
+#kappa[i] <- debdata$allStat[[i]][[26]]
+p.M[i] <- debdata$allStat[[i]][[28]]
+#p.T[i] <- debdata$allStat[[i]][[29]]
+k.J[i] <- debdata$allStat[[i]][[30]] # not good, too similar
+E.G[i] <- debdata$allStat[[i]][[31]]
+Arrh[i] <- debdata$allStat[[i]][[36]]
+funcres[i] <- debdata$allStat[[i]][[38]]
+
+}
+
+debparams <- cbind(SpNames, fam, order, class, zoom, Fm, alfa, ffae, v, p.M, k.J, E.G, Arrh, funcres)
+debparams[which(debparams == 0)] <- NA #replace zero's with NA because they are actually NAs not zeros
+
+## 
+vectFish <- which(class == "Actinopterygii")
+vectShark <- which(class == "Chondrichthyes")
+debFish <- debparams[vectFish,]
+
+#Plot zoom factor against metabolic rate, we can see that are few species have very high metabolic rates
+plot(debFish[,5], debFish[,10], ylim = c(0, 200), xlab = "zoom factor", ylab = "p.M")
+
+#highFishpM = which(debFish[,10] > 150)
+#debFish[highFishpM,c(1:3)]
+#quantile(as.numeric(debFish[c(highFishpM), 5]))
+
+#unique(class)
+# select only fish or sharks with main non extreme metabolic rates
+vectFish <- which(class == "Actinopterygii" & p.M > 0 & p.M < 100)
+vectShark <- which(class == "Chondrichthyes" & p.M > 0 & p.M < 1000)
+
+plot(log(zoom[vectFish]), log(p.M[vectFish]), xlab = "log structural length, cm", ylab = "log p.M", main = "Scaling of mass specific metabolic rate (DEB p.M.) to body size in fish")
+abline(lm(log(p.M[vectFish]) ~ log(zoom[vectFish])), col = 'red')
+
+
+plot(zoom[vectShark], p.M[vectShark], xlab = "zoom factor - sharks", ylab = "p.M")
+
+#zoom factor is a structural length in cm, or a cubic root of structural volume in cm3. Let's assume it is a simple length in cm. Units of p.M is J cm-3 day-1.
+
+metsizeFish = lm(log(p.M[vectFish]) ~ log(zoom[vectFish])) #do a linear regression of metabolic rate versus zoom factor 
+summary(metsizeFish)
+#coefficient of exp(3.43) or 30.1 and exponent of -0.31
+
+#this means that Metrate = 30.1*Lmax^(-0.31)
+
+metrate <- ((30.1*ModelSpecies$Lmax^(-0.31))/3000) #3000 is to convert Joules per day to g per day
+metrateY <- metrate*365
+#The average estimated value for the model species is ca 10 J cm3-1 day-1, or 0.003 g g-1 day-1, assuming 1g of structure mass equals 3000J and 1cm3 of wet weight is 1g. This would give ks = 1.1 g g-1 year-1. 
+```
+
+We cannot really use this value because this is a structural maintenance that scales as 1, whereas mizer assumes scaling exponent of 0.7 and it scales with the total body mass. To get from structure to total body mass we need to assume some level of reserve to structure ratio. However, the key point is that mass specific metabolic rate clearly decreases, not INCREASES with maximum body size. So overall we assume a scaling exponent of -0.25 and adjust the  If we take the total body maintenance, the unit value then should be lower, because reserves don't need structure. 
+
+
+### Plankton spectrum: historical and projected
+
+```{r}
+#  lme_resource_ts <- readRDS("../inputs/lme_scale_gcm_inputs.rds")
+# # #glimpse(lme_resource_ts)
+# # 
+#  sst <- lme_resource_ts %>% filter(variable == "sst") %>% filter (lme == 46)
+#  area46sst <- sst
+#  save(area46sst, file = "sstInputsOffAustralia.RData")
+
+load(file = "datasets/sstInputsOffAustralia.RData")
+area46sst$year <- as.numeric(substr(area46sst$month, 1,4))
+area46sst$monthonly <- substr(area46sst$month, 6,7)
+
+#Extreme future 
+hist_rcp85 <- area46sst %>% filter (scenario == "historical" | scenario == "rcp85")
+
+#get annual values 
+annual_hist_rcp85 <- hist_rcp85 %>% group_by(year) %>% summarise (meanSST = mean(value))
+
+#low emission scenario 
+rcp45 <- area46sst %>% filter (scenario == "rcp45")
+#get annual values 
+annual_rcp45 <- rcp45 %>% group_by(year) %>% summarise (meanSST = mean(value))
+
+#plot lambda
+plot(annual_hist_rcp85$year, (annual_hist_rcp85$meanSST - 273), pch = 19, xlab = "Year", ylab = "Projected SST in C")
+points(annual_rcp45$year, (annual_rcp45$meanSST -273), col = 'orange', pch = 19)
+abline (v= 2005, lty =2)
+
+## projected temperature change by 2100 in high emission scenario
+mean(annual_hist_rcp85$meanSST[which(annual_hist_rcp85$year > 2090)]) - 273
+mean(annual_hist_rcp85$meanSST[which(annual_hist_rcp85$year == 2000)]) - 273
+
+## projected temperature change by 2100 in high emission scenario
+mean(annual_rcp45$meanSST[which(annual_rcp45$year > 2090)]) - 273
+
+
+
+## get kappa and lambda values
+
+# lme_resource_ts <- readRDS("../inputs/lme_resource_ts.rds")
+# 
+# #Filter out only area 46 - SE AUstrlaian slope 
+# area46res <- lme_resource_ts %>% filter (lme == 46) 
+# save(area46res, file = "resourceInputsOffAustralia.RData")
+#separate year and month, and be able to get annual mean slope values, since we don't model seasonal dynamics anyway
+load(file = "datasets/resourceInputsOffAustralia.RData")
+
+area46res$year <- as.numeric(substr(area46res$month, 1,4))
+area46res$monthonly <- substr(area46res$month, 6,7)
+
+#Extreme future 
+hist_rcp85 <- area46res %>% filter (scenario == "historical" | scenario == "rcp85")
+#area46 <- as.data.frame(area46)
+
+#get annual values 
+annual_hist_rcp85 <- hist_rcp85 %>% group_by(year) %>% summarise (meanLam = mean(lambda), meanKap = mean(kappa))
+
+#low emission scenario 
+rcp45 <- area46res %>% filter (scenario == "rcp45")
+#get annual values 
+annual_rcp45 <- rcp45 %>% group_by(year) %>% summarise (meanLam = mean(lambda), meanKap = mean(kappa))
+
+#plot lambda
+plot(annual_hist_rcp85$year, annual_hist_rcp85$meanLam, pch = 19, xlab = "Year", ylab = "Slope of the plankton spectrum")
+points(annual_rcp45$year, annual_rcp45$meanLam, col = 'orange', pch = 19)
+abline (v= 2005, lty =2)
+
+#plot kappa
+plot(annual_hist_rcp85$year, annual_hist_rcp85$meanKap, pch = 19, xlab = "Year", ylab = "Intercept of the plankton spectrum")
+points(annual_rcp45$year, annual_rcp45$meanKap, col = 'orange', pch= 19)
+abline (v= 2005, lty =2)
+
+```
+
+### Benthos spectrum: data preparation
+
+In this section I use data from very small benthic invertebrates collected by Kate Fraser (PhD student), and standardised per m2. For invertebrates bigger than 2g, data from RLS is used and compiled by Freddie Heather into weight bins on log2 scale. The data is combined, binned into equal weight bins on log10 scale and then a regression slope is fitted. 
+From the first regression and by plotting abundances we can see that there is a big increase in abundance at largest weight groups, which is mostly due to urchins and partly lobsters. Given that urchins and lobsters are modelled explicitly we want to exclude them from teh background spectrum. Ideally this should be done by reanalysing Freddie's data without urchins and lobsters, but for now I just test a regression with a steeper sloe. Assuming a steeper slope and actually gives a better fit to small weight groups. We have to remember that Kate's data can underestimate the abundance (critters escape), but is less likely to overestimate it
+
+```{r, eval = F}
+# Kate <- read.csv(file = "../inputs/benthos/all_bysample_size.csv") #small invertebrates
+# KateCodes <- read.csv(file = "../inputs/benthos/sample_data_env_vectors.csv") #site codes for Kate's data
+# 
+# # coordinates for eastern Tasmanian coast
+# #TasmCoorLon <- c(146.5, 148.5) 
+# #TasmCoorLat <- c(-41.00, -43.60)
+# KateWgtGroups <- c(1.8E-06,4.8E-06, 1.1E-05, 2.9E-05, 7.1E-05, 1.8E-04, 4.5E-04, 1.1E-03, 2.8E-03, 6.8E-03, 1.7E-02, 4.2E-02, 1.1E-01, 2.5E-01, 6.8E-01, 1.6E+00) #weight groups used in Kate's data (size of sieves)
+# 
+# TasmCodes <- KateCodes %>% filter (lat > -43.60 & lat < -41.00) %>% filter (lon > 146.5 & lon < 148.5)
+# TasmCodes.l <- unique(TasmCodes$SampleCode)
+# TasmInvSmall <- Kate %>% filter (SampleCode %in% TasmCodes.l) 
+# TasmInvSmall <- TasmInvSmall[,-c(1:2)]
+# save(TasmInvSmall, file = "smallInvertebrateAbundance.RData")
+
+#load data from Heather et al. 2021 for Tasmanian benthos abundance from visual surveys
+ Freddie <- read.csv(file = "datasets/Heather_InvertDataset.csv") #data of large invertebrates
+
+#load data for small invertebrate abundance in Tasmania from Fraser et al. 2021
+load(file = "datasets/smallInvertebrateAbundance.RData")
+KateWgtGroups <- c(1.8E-06,4.8E-06, 1.1E-05, 2.9E-05, 7.1E-05, 1.8E-04, 4.5E-04, 1.1E-03, 2.8E-03, 6.8E-03, 1.7E-02, 4.2E-02, 1.1E-01, 2.5E-01, 6.8E-01, 1.6E+00) #weight groups used in Kate's data (size of sieves)
+MeanAbund <- apply(TasmInvSmall, 2, mean)
+MinAbund <- apply(TasmInvSmall, 2, min)
+MaxAbund <- apply(TasmInvSmall, 2, max)
+
+InvData <- list()
+InvData$wgt <- KateWgtGroups
+InvData$meanAb <- MeanAbund
+InvData$minAb <- MinAbund
+InvData$maxAb <- MaxAbund
+InvData <- as.data.frame(InvData)
+InvData <- InvData[-c(which(InvData$meanAb ==0)),] # remove size groups that have 0 abundance
+
+#combine with Freddie's data about average abundance at size in Tasmania
+InvData <- rbind(InvData, Freddie)
+
+```
+
+###Benthos spectrum: derive the size slope
+
+```{r}
+#What is the mean abundance per m2 
+sum(InvData$meanAb)
+
+## now I have to bin data into bins of equal size on log10 scale 
+InvData$cat <- NA
+log10(min(InvData$wgt)) # minimum size on log10 scale
+log10(max(InvData$wgt))
+
+breaks <- seq(from = -6, to = 4) #make a vector of breaks on a log10 scale
+
+#for each empirical weight put assign the bin on the log10 scale
+for (i in 1:length(breaks)) {
+  temp <- which((log10(InvData$wgt) > breaks[i]) & (log10(InvData$wgt) < breaks[i+1]))
+  InvData$cat[c(temp)] <- i
+}
+
+#get abundances for the weight groups on the equal log10 scale (normalised)
+InvDataBinned <- InvData %>% group_by(cat) %>% summarise (mean_ab = sum(meanAb), min_ab = sum(minAb), max_ab = sum(maxAb), meanWgt = mean(wgt))
+
+#add the midpoint weight for each of the log10 weight groups 
+InvDataBinned$wgtBinLog10 <- seq(from = -5.5, to = 3.5, by = 1) #mean weight in the bin on log 10 scale
+InvDataBinned$wgtGroup <- 10^(InvDataBinned$wgtBinLog10)
+InvDataBinned$bioPerm2 <- InvDataBinned$wgtGroup * InvDataBinned$mean_ab
+#save(InvDataBinned, file = "../inputs/benthos/InvDataBinned.RData")
+
+#Now we fit linear regression to the total abundance data 
+bs <- lm(log10(InvDataBinned$mean_ab) ~ log10(InvDataBinned$wgtGroup))
+summary(bs)
+
+#Plot it 
+plot(log10(InvDataBinned$wgtGroup), log10(InvDataBinned$mean_ab), type = 'l', ylim = c(-4, 6), main = "Benthos slopes in Tasmania: log10(Abund) = 1.1 - 0.62*log10(wgt_bin)", xlab = "Log10 (w,g)", ylab = "Log10 (Abundance: min, mean, max)")
+points(log10(InvDataBinned$wgtGroup), log10(InvDataBinned$min_ab), type = 'l', lty = 2)
+points(log10(InvDataBinned$wgtGroup), log10(InvDataBinned$max_ab), type = 'l', lty = 2)
+abline(lm(log10(InvDataBinned$mean_ab) ~ log10(InvDataBinned$wgtGroup)), col = 'red')
+
+# plot(log10(InvDataBinned$wgtGroup), log10(InvDataBinned$mean_ab), type = 'l', lwd =4, ylim = c(-4, 6), xlab = "Log10 (w,g)", ylab = "Log10 (Abundance: min, mean, max)")
+# points(log10(InvDataBinned$wgtGroup), log10(InvDataBinned$min_ab), type = 'l', lty = 2,  lwd =2)
+# points(log10(InvDataBinned$wgtGroup), log10(InvDataBinned$max_ab), type = 'l', lty = 2, lwd = 2)
+# abline(lm(log10(InvDataBinned$mean_ab) ~ log10(InvDataBinned$wgtGroup)), lwd =3, col = 'orange')
+
+
+## We can see that there is a big increase in abundance at largest weight groups, which is mostly due to urchins and partly lobsters. Given that urchins and lobsters are modelled explicitly we want to exclude them from teh background spectrum. Assuming a steeper slope and actually gives a better fit to small weight groups 
+#AbNoUr <- 0.8 - 0.85*log10(InvDataBinned$wgtGroup)
+## this equation is now used a very general approximation of the benthic slope
+AbNoUr <- 0.8 - 0.9*log10(InvDataBinned$wgtGroup)
+
+points(log10(InvDataBinned$wgtGroup), AbNoUr, col = 'blue', type = 'l', lwd =3)
+
+abline(v = log10(0.7), lty = 3, lwd = 2)
+abline(v = log10(2), lty = 3, lwd = 2) #this is where Freddie's data starts and Kate's data ends
+abline(v = log10(5), lty = 2, lwd = 2)
+
+#or if just plotting the original (nonbinned) weights 
+plot(log10(InvData$wgt), log10(InvData$meanAb), type = 'l', ylim = c(-4, 6), main = "Benthos slopes in Tasmania: not normalised weight groups", xlab = "Log10 (w,g)", ylab = "Log10 (Abundance: min, mean, max)")
+points(log10(InvData$wgt), log10(InvData$minAb), type = 'l', lty = 2)
+points(log10(InvData$wgt), log10(InvData$maxAb), type = 'l', lty = 2)
+abline(lm(log10(InvData$meanAb) ~ log10(InvData$wgt)), col = 'red')
+points(log10(InvDataBinned$wgtGroup), AbNoUr, col = 'blue', type = 'l')
+abline(v = log10(2), lty = 3)
+
+```
+
