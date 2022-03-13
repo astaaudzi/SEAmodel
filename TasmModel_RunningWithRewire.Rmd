@@ -4,6 +4,10 @@ author: "Asta Audzijonyte et al."
 date: "7 November 2019"
 output: html_document
 ---
+
+This is the original code that was used to develop Tasmanian model and multiple resources for coastal ecosystems. This work was started in 2018 and later multiple resources and other features of this model (e.g. starvation mortality) were implemented in the main mizer package, through mizerMR and mizerStarvation add-ons. So it is NOT recommended to use this code, but it is kept here for tracing purposes. 
+
+
 ### clear memory
 
 ```{r}
@@ -17,7 +21,7 @@ rm(list=ls())
 ```{r warning=F, message=FALSE, echo=T}
 #rm(list=ls())
 #install.packages(vegan)
-remotes::install_github("astaaudzi/mizer", ref = "rewire-temp-comp")
+#remotes::install_github("astaaudzi/mizer", ref = "rewire-temp-comp")
 library(mizerRewire)
 library(tidyverse)
 
@@ -155,6 +159,13 @@ getBiomass(tasm1)[tmax,]
 relbio <- (getBiomass(tasm1)[tmax,]/max(getBiomass(tasm1)[tmax,]))/mariaParams$scaledBio
 relbio
 
+# sizeat25cm <- mariaParams$a * 2.5^mariaParams$b
+# 
+#         MeanWgtAbove25 <- rep(NA,17)
+#         for (xx in 1:length(mariaParams$species)) {
+#             MeanWgtAbove25[xx]  <- mean(getMeanWeight(tasm1, min_w = sizeat25cm[xx], max_w = mariaParams$w_inf[xx])[(tmax-29):tmax])
+#                   }
+
 # get a value for observed invertebrate abundance based on empirical data (only for the size range used in the model)
 obsInvAb <- sum(InvData$meanAb[which(InvData$wgt > min_w_bb & InvData$wgt < w_bb_cutoff)])
 modelInvAb <- sum(tasm1@n_bb[tmax,]*params@dw_full)
@@ -168,7 +179,6 @@ modelInvAb/obsInvAb
 
 Next, we can run the same model with fishing. 
 As a simplest step we fish ALL model species at once at the same level and use F = 0.2/year (but note that F in mizer is not directly comparable to F from stock assessments). We apply knife-edge selectivity at maturation size
-
 
 ```{r warning=FALSE, message=FALSE, echo=T}
 
@@ -204,6 +214,8 @@ getBiomass(tasm1ef)[mean((tmax-30):tmax),]/getBiomass(tasm1)[tmax,]
 This part is essential to assess species interactions. Now we fish one species at a time and see how that will affect the community? We fish one species in a loop and explore. We also save results in a dataframe 
 
 While this is run in a loop you can check plots for each result. Note that species biomases are shown on a logarithmic scale, so small relative changes might be hard to see visually
+
+!! NOTE - if you changed species cathabilities in the chunk above, rerun the chunk setting species params anew
 
 ```{r}
 # what fishing mortality impose on each species individually? 
