@@ -1,4 +1,4 @@
-modelName,Taxonomic name,,plotName1,plotName2
+modelName,Taxonomic name,Common_name,plotName1,plotName2
 C_rasor,Caesioperca rasor,barber_perch,Caesioperca,Caesioperca
 C_spectabilis,Cheilodactylus spectabilis,morwong,morwong,Cheilodactylus
 D_lewini,Dinolestes lewini,pike,Dinolestes,Dinolestes
@@ -16,5 +16,5 @@ Boarfish,Pentaceropsis recurvirostris,boarfish,boarfish,Pentaceropsis
 M_freycineti,Meuschenia freycineti,leatherjacekts_2,Meuschenia,Meuschenia
 P_laticlavius,Pictilabrus laticlavius,wrasse_2,Pictilabrus,Pictilabrus
 urchins,,,urchins,urchins
-lobsters,,,lobsters,lobsters
+lobsters,,,lobsters,Jasus
 predator,,,predator,predator

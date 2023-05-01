@@ -250,7 +250,7 @@ Here we explore 29 parameter combinations, derived through sequential nudging (s
 
 ```
 
-### Fig. S7: model and observed biomases
+### Fig. S6: model and observed biomases
 
 ```{r}
 
@@ -291,29 +291,31 @@ plot90s <- ggplot(plot_mod_l, aes(x = group, y = value)) +
     legend.position="none",
     axis.text=element_text(size=14)
   ) +
-  labs(x = "Model group", y = "Biomass, g/m2") 
-#  ggtitle("Modelled and observed biomass") 
+  labs(x = "Model group", y = "Biomass, g/m2") +
+  ggtitle("Modelled and observed biomass") 
 
-plot00s <- ggplot(plot_mod_l, aes(x = group, y = value)) +
-  geom_boxplot(notch = F, fill = "grey", outlier.colour = 'black', outlier.shape = 1, outlier.fill = 'black' , alpha = 0.5) + 
-  #geom_boxplot(data=plot_obs, aes(x = modelName, y = meanBio/500), notch = F, fill = "red", outlier.colour = 'red', outlier.shape = 1, alpha = 0.5) + 
-  geom_boxplot(data=plot_obs20, aes(x = modelName, y = meanBio/500), notch = F, fill = "red", outlier.colour = 'red', outlier.shape = 1, alpha = 0.5) + 
-    theme_bw() +
- # ylim(-1, 1.5) + 
-     theme(
-    panel.grid.major = element_blank(), 
-    panel.grid.minor = element_blank(),
-    axis.title.x = element_blank(),
-    axis.title.y = element_text(size = 16),
-    axis.text.x = element_text(angle = 90, vjust = 0.5), 
-    legend.position="none",
-    axis.text=element_text(size=14)
-  ) +
-  labs(x = "Model group", y = "Biomass, g/m2") 
-#  ggtitle("Modelled and observed biomass") 
+plot90s
 
-#garrange(linearplot, logplot, labels = c("linear scale", "log10 scale"), ncol = 2, nrow = 1)
-ggarrange(plot90s, plot00s, labels = c("1990s", "2000s"), ncol = 2, nrow = 1)
+# plot00s <- ggplot(plot_mod_l, aes(x = group, y = value)) +
+#   geom_boxplot(notch = F, fill = "grey", outlier.colour = 'black', outlier.shape = 1, outlier.fill = 'black' , alpha = 0.5) + 
+#   #geom_boxplot(data=plot_obs, aes(x = modelName, y = meanBio/500), notch = F, fill = "red", outlier.colour = 'red', outlier.shape = 1, alpha = 0.5) + 
+#   geom_boxplot(data=plot_obs20, aes(x = modelName, y = meanBio/500), notch = F, fill = "red", outlier.colour = 'red', outlier.shape = 1, alpha = 0.5) + 
+#     theme_bw() +
+#  # ylim(-1, 1.5) + 
+#      theme(
+#     panel.grid.major = element_blank(), 
+#     panel.grid.minor = element_blank(),
+#     axis.title.x = element_blank(),
+#     axis.title.y = element_text(size = 16),
+#     axis.text.x = element_text(angle = 90, vjust = 0.5), 
+#     legend.position="none",
+#     axis.text=element_text(size=14)
+#   ) +
+#   labs(x = "Model group", y = "Biomass, g/m2") 
+# #  ggtitle("Modelled and observed biomass") 
+# 
+# #garrange(linearplot, logplot, labels = c("linear scale", "log10 scale"), ncol = 2, nrow = 1)
+# ggarrange(plot90s, plot00s, labels = c("1990s", "2000s"), ncol = 2, nrow = 1)
 
 ```
 
@@ -327,35 +329,33 @@ code by Camilla Novaglio
 ```{r}
 
 #rm(list=ls())
-# library(ggplot2)
-# library(dplyr)
-# library(tidyverse)
-library(patchwork)
+library(ggplot2) # CN note need to run if starting from here 
+library(dplyr) 
+library(tidyverse) 
+library(patchwork) 
 
-# data 
+# data
+getwd()
 load("modelParams/mariaParamsMs.RData") #species parameter file 
- load("plotData/biom_tozero.RData")
- load("plotData/size_tozero.RData")
- load("plotData/size_tozeroMat.RData")
-# #load("plotData/prolarfish_tozero.RData")
- load("plotData/yield_tozero.RData")
-# 
- biom<-biom_tozero 
- yield<-yield_tozero
- size<-size_tozero
- sizeMat<-size_tozeroMat
+load("plotData/biom_tozero.RData")
+load("plotData/size_tozero.RData")
+load("plotData/size_tozeroMat.RData")
+load("plotData/yield_tozero.RData")
+
+biom<-biom_tozero 
+yield<-yield_tozero
+size<-size_tozero
+sizeMat<-size_tozeroMat
 # #sizeMat<-prolarfish_tozero
 
-
 # sp names 
-#names<-read.csv("/Users/camillan/Dropbox/TasmanianProductivityChange/matchNames.csv")
 names<-read.csv("plotData/matchNames.csv")
 names<-names[,c(1,4,5)]
 colnames(names)<-c("species", "plotName1", "plotName2")
 
 # empircal values 
-#empir<-read.csv("/Users/camillan/Dropbox/TasmanianProductivityChange/plotData/ObservedBio_SizeChanges_CN.csv")
-empir<-read.csv("plotData/ObservedBio_SizeChanges_CN.csv")
+empir<-read.csv("plotData/ObservedBio_SizeChanges.csv")
+empir<-read.csv("plotData/ObservedBio_SizeChanges_CN.csv") # CN is the csv version
 
 # relativeBioLog and relative_size_change are the ones to use 
 empir<-empir %>% 
@@ -363,43 +363,52 @@ empir<-empir %>%
   `colnames<-`(c("species","bioEmp", "sizeEmp")) %>% 
   mutate(sizeEmp = round(sizeEmp, 2)) 
 
-# add important info 
+# add empirical info 
 empir<- empir %>% 
   full_join(unique(dplyr::select(biom, c(funcgr, species)))) %>% 
   full_join(names)
 
+# add changes in biomass 
 empirBio1<-empir %>% 
   dplyr::select(species, bioEmp, funcgr, plotName1, plotName2) %>% 
   `colnames<-`(c("species","mean","funcgr", "plotName1", "plotName2")) %>% 
   mutate(scenario = "empirical",
-         group_trait ="plankt_kappa") # if you only want to add these data to the 1st panel, otherwise you need to repeat these data for each of the 4 group_trait ("plankt_kappa", "plankt_slope", "benth_kappa", "benth_slope") and add them together ... as done below now 
+         group_trait ="plankt_kappa") 
 
-# this works only for MS plots where you are adding empirical data to the kappa scenarios and not the slope ones, if you need to do the same for SI, you need to extend these dataset to include kappa AND slope 
+empirBio2<-empirBio1 %>% 
+  mutate(group_trait ="benth_kappa")
 
-empirBio2<-empir %>% 
-  dplyr::select(species, bioEmp, funcgr, plotName1, plotName2) %>% 
-  `colnames<-`(c("species","mean","funcgr", "plotName1", "plotName2")) %>% 
-  mutate(scenario = "empirical",
-         group_trait ="benth_kappa")
+empirBio3<-empirBio1 %>% 
+  mutate(group_trait ="plankt_slope")
 
-empirBio<-empirBio1 %>% 
-  full_join(empirBio2)
+empirBio4<-empirBio1 %>% 
+  mutate(group_trait ="benth_slope")
 
+empirBio<-empirBio1 %>%
+  full_join(empirBio2) %>% 
+  full_join(empirBio3) %>% 
+  full_join(empirBio4)
+
+# add changes in size 
 empirSize1<-empir %>% 
   dplyr::select(species, sizeEmp, funcgr, plotName1, plotName2) %>% 
   `colnames<-`(c("species","mean","funcgr", "plotName1", "plotName2")) %>% 
   mutate(scenario = "empirical",
          group_trait ="plankt_kappa")
 
-empirSize2<-empir %>% 
-  dplyr::select(species, sizeEmp, funcgr, plotName1, plotName2) %>% 
-  `colnames<-`(c("species","mean","funcgr", "plotName1", "plotName2")) %>% 
-  mutate(scenario = "empirical",
-         group_trait ="benth_kappa")
+empirSize2<-empirSize1 %>% 
+  mutate(group_trait = "benth_kappa")
 
-empirSize<-empirSize1 %>% 
-  full_join(empirSize2)
+empirSize3<-empirSize1 %>% 
+  mutate(group_trait = "plankt_slope")
 
+empirSize4<-empirSize1 %>% 
+  mutate(group_trait = "benth_slope")
+
+empirSize<-empirSize1 %>%
+  full_join(empirSize2) %>% 
+  full_join(empirSize3) %>% 
+  full_join(empirSize4)
 
 ```
 
@@ -435,14 +444,13 @@ load(file = "modelParams/mariaParamsMs.RData") #species parameter file
 maxS <- mariaParams[,c("species","Linf")]
 
 biom<-biom %>% 
-  #select(-maxSize) %>%  #Asta: maxSize is not in the biom file
   mutate(change = "Biomass change") %>% 
   full_join(names)
   
 size<-size %>% 
   mutate(change = "Size change") %>% 
   full_join(names)
-# 
+ 
 sizeMat<-sizeMat %>%
   mutate(change = "Size change Mat") %>%
   full_join(names)
@@ -470,12 +478,17 @@ shapes<-list(biom = shape1, yield = shape2, size = shape1, sizeMat = shape1)
 # set plots limits
 lim<-list(biom = c(-1.2, 1.2), yield = c(-1.2, 1.2), size = c(-1.2, 1.2), sizeMat = c(-0.5, 0.5))
 
+## define whether the plots are for main document (MS, kappa) or for supplementary information (SI, slope; including empirical values for changes in biomass and size)
+
+# plot_for_MS = "no"
+plot_for_MS = "yes"
+
 plot_list<-list()
 data_list<-list()
 
 for (i in 1:length(plot_data)){
   
-  # i = 2
+  # i = 1
   a<-plot_data[[i]]
 
   # define baseline - IF FISHING use 14_f2
@@ -486,8 +499,7 @@ for (i in 1:length(plot_data)){
   remove_baseline<-unique(a$scenario)[grepl("baseline",unique(a$scenario))==TRUE]
   a<-a %>% 
     filter(!scenario %in% remove_baseline)
-
-  # plankton kappa/slope, benthos kappa/slope  
+ # plankton kappa/slope, benthos kappa/slope  
   a$group_trait<-ifelse(grepl("benth",a$scenario), "benth", "plankt")
   a$group_trait2<-ifelse(grepl("large",a$scenario), "slope",
                          ifelse(grepl("small",a$scenario), "slope", 
@@ -554,7 +566,7 @@ for (i in 1:length(plot_data)){
   }
 
   # reorder factors 
-  # group trait - facetting factor 
+  # group trait - faceting factor 
   b$group_trait<-as.factor(b$group_trait)
   b$group_trait<-factor(b$group_trait, levels = c("plankt_kappa", "plankt_slope", "benth_kappa", "benth_slope"))
 
@@ -574,32 +586,43 @@ for (i in 1:length(plot_data)){
   
   # removing hulafish for yield 
   # this is missing from yield data and it messes up the factor sorting below. if you want to keep these spp, you need to add all the missing info for this spp: 
-  # filter(b, plotName1 == "hulafish")
   if(names(plot_data[i]) == "yield"){
     b<-b %>% 
       filter(species != "T_caudimaculatus")
   }
   
   b<-with(b, b[order(funcgr,Linf),])
-  spOrder<-rev(unique(b$plotName1)) ## CHANGE NAMES plotName1 
-  b$plotName1<-factor(b$plotName1, levels = spOrder) ## CHANGE NAMES plotName1 
+  
+  # option 1 -order by ?
+  spOrder<-rev(unique(b$plotName2)) ## CHANGE NAMES plotName1 
+  b$plotName2<-factor(b$plotName2, levels = spOrder) ## CHANGE NAMES plotName1 
 
+  # # option 2 - alphabetic order 
+  # spOrder<-rev(sort(unique(b$plotName2))) ## CHANGE NAMES plotName1 
+  # b$plotName2<-factor(b$plotName2, levels = spOrder) ## CHANGE NAMES plotName1 
+  
   # new facet label names
   # temp.labs<- c("Plankton abundance", "Plankton slope","Benthos abundance", "Benthos slope") # for SI where you show them all 
   temp.labs<- c("PLANKTON", "Plankton slope","BENTHOS", "Benthos slope") # for MS where you show only kappa
   names(temp.labs) <- c("plankt_kappa", "plankt_slope", "benth_kappa", "benth_slope")
   
-  # if MS 
-  #b<-b %>% filter(!group_trait %in% c("plankt_slope","benth_slope"))
-  #if Supplement
-  b<-b %>% filter(!group_trait %in% c("plankt_kappa","benth_kappa"))
-
+  
+  # if plots for main document ....
+  if(plot_for_MS == "yes"){
+    b<-b %>% filter(!group_trait %in% c("plankt_slope","benth_slope"),
+                    !scenario == "empirical")
+  }else if (plot_for_MS == "no"){
+    b<-b %>% filter(!group_trait %in% c("plankt_kappa","benth_kappa"))
+  }
+  
   pd<-position_dodge(0.5)
   
+  # check Caesioperca - outside plot limits for better visualisation. 
+  # filter(b, plotName1== "Caesioperca", group_trait == "plankt_kappa", scenario %in% c("increase", "increase_warming"))
+  
   ## CHANGE NAMES plotName1 
-  plot<-ggplot(b, aes(x=mean, y=plotName1, group=scenario, color=scenario, shape = scenario))+
+  plot<-ggplot(b, aes(x=mean, y=plotName2, group=scenario, color=scenario, shape = scenario))+
     geom_vline(xintercept = 0, linetype = "dashed")+
-    # xlim(lim[[i]])+
     geom_errorbar(aes(xmin=mean-sd, xmax=mean+sd), width=0.5, position=pd)+
     geom_point(position=pd, size=2)+
     scale_x_continuous(name = title[[i]], limits = lim[[i]]) +
@@ -619,8 +642,6 @@ for (i in 1:length(plot_data)){
           panel.grid.minor = element_blank(),
           strip.background = element_rect(color = "black", fill = "white"))+
     
-    # gray shadings ... better doing this outside the loop as yield has different min max to consider because of 1 spp is not included/caught. it will be OK to do the gray shading area here if that spp is included - see above.   
-    
     facet_wrap(vars(group_trait),
                labeller = labeller(group_trait = temp.labs), 
                nrow = 1)
@@ -637,11 +658,11 @@ for (i in 1:length(plot_data)){
 ### check limits
 
 ```{r}
-lim
-plot_list$biom
-plot_list$yield 
-plot_list$size
-#plot_list$sizeMat
+# lim
+# plot_list$biom
+# plot_list$yield 
+# plot_list$size
+# #plot_list$sizeMat
 
 ```
 
@@ -703,49 +724,24 @@ plot_list$size<-a
 #   annotate("text",x = 0.1, y = 4.5, label = "Predators", color = "grey40", size = 4)
 # plot_list$sizeMat<-a
 
-# adjust legend 
-plot_list$yield<-plot_list$yield + theme(legend.position = "none")
-plot_list$size<-plot_list$size + theme(legend.position = "none")
-#plot_list$sizeMat<-plot_list$sizeMat + theme(legend.position = "none")
+# adjust legend - if plot_for_MS == "no" you need to keep the biomass legend as yield has no emperical values.
+if(plot_for_MS == "yes"){
+  plot_list$biom<-plot_list$biom + theme(legend.position = "none")
+  plot_list$size<-plot_list$size + theme(legend.position = "none") 
+}else if (plot_for_MS == "no"){
+  plot_list$yield<-plot_list$yield + theme(legend.position = "none")
+  plot_list$size<-plot_list$size + theme(legend.position = "none") 
+}
 
-# refine legend... 
-# g_legend<-function(a.gplot){
-#   tmp <- ggplot_gtable(ggplot_build(a.gplot))
-#   leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
-#   legend <- tmp$grobs[[leg]]
-#   return(legend)}
-# 
-# mylegend<-g_legend(plot_list$biom)
-# 
-# plot_list$biom<-plot_list$biom + theme(legend.position = "none")
+# FIG 3 in MS
+if(plot_for_MS == "yes"){
+  name = "/Users/camillan/Dropbox/TasmanianProductivityChange/REVISION/Fig3.pdf"
+}else if(plot_for_MS == "no"){
+    name ="/Users/camillan/Dropbox/TasmanianProductivityChange/REVISION/FigS7.pdf"}
 
-# plot1<-plot_list$biom / plot_list$yield +  plot_layout (nrow = 2)
-# plot2<- plot1 + mylegend + plot_layout (nrow = 2)
-
-#setwd("/Users/camillan/Dropbox/TasmanianProductivityChange/plots/20210309")
-# fig 1 - biomass and Yield 
-#pdf("BioYieldSize_slopes.pdf", height=13, width=10)
+pdf(name, height=13, width=10)
 plot_list$biom / plot_list$yield /plot_list$size +  plot_layout (nrow = 3)
-#dev.off()
-
-# # fig 2 - Size 
-# pdf("Size_fishing_name1.pdf", height=8, width=10)
-# plot_list$size / plot_list$sizeMat  + plot_layout (nrow = 2)
-# dev.off()
-
-# old versions and names... 
-# # paste the 4 plots vertically and print in 1 fig (no yield for the SI plot)
-# setwd("/Users/nov017/Dropbox/TasmanianProductivityChange/plots")
-# # setwd("/Users/nov017/Desktop")
-# jpeg("Bio_CN_option5_Fishing.jpeg", height=13, width=12, units ='in', res=300)
-# plot_list$biom / plot_list$size / plot_list$yield + plot_layout (nrow = 3)#, ncol = 2) #heights = c(1,1,1,1)
-# dev.off()
-
-# setwd("/Users/nov017/Dropbox/TasmanianProductivityChange/plots")
-# # setwd("/Users/nov017/Desktop")
-# jpeg("Bio_CN_option5_Fishing_SI.jpeg", height=13, width=18, units ='in', res=300)
-# plot_list$biom / plot_list$size / plot_list$yield + plot_layout (nrow = 3)#, ncol = 2) #heights = c(1,1,1,1)
-# dev.off()
+dev.off()
 
 ```
 
