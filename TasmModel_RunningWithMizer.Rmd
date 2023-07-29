@@ -259,7 +259,7 @@ plotSpectra(tasm1)
  #make sure any fishing mortality changes are done to params object and not species params 
 gear_params(params)$catchability <- fish.mort.spp
 
-tasm1ef <- project(params, t_max = 20, effort=3, dt = dt) 
+tasm1ef <- project(params, t_max = tmax, effort=3, dt = dt) 
 
 plot(tasm1ef)
 
@@ -304,6 +304,7 @@ feedlev <- getFeedingLevel(tasm1, species = "Notolabrus")
 #set fishing
 fish.mort.spp <- c(0.15, 0.15, 0, 0.1, 0.15, 0.1, 0.15, 0.1, 0.1, 0.15, 0.15, 
                   0.15, 0.15, 0.15, 0.1, 0.15, 0.15)
+paramsNew <- params
 gear_params(paramsNew)$catchability <- fish.mort.spp
 initial_effort(paramsNew) <- 1
 
