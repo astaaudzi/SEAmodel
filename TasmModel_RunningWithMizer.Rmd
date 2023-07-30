@@ -375,25 +375,26 @@ fish.mort.v <-  c(0.15, 0.15, 0, 0.1, 0.15, 0.1, 0.15, 0.1, 0.1, 0.15, 0.15,
                   0.15, 0.15, 0.15, 0.1, 0.15, 0.15)
 
 prod_scen<-list( 
-     "baseline_12_f0"=       c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
-     "more_plankt_12_f0"=    c("kappa" =2.6, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
-     "less_plankt_12_f0"=    c("kappa" =1.5, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
-     "small_plankt_12_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.18, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
-     "large_plankt_12_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.12, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
-     "more_benth_12_f0"=     c("kappa" =2, "kappa_ben"=9, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
-     "less_benth_12_f0"=     c("kappa" =2, "kappa_ben"=4, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
-     "small_benth_12_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=2.0, "temp" = 12, "fmort" = fish.mort.0),
-     "large_benth_12_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.8, "temp" = 12, "fmort" = fish.mort.0),
-    
-     "baseline_14_f0"=       c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
-     "more_plankt_14_f0"=    c("kappa" =2.6, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
-     "less_plankt_14_f0"=    c("kappa" =1.5, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
-     "small_plankt_14_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.18, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
-     "large_plankt_14_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.12, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
-     "more_benth_14_f0"=     c("kappa" =2, "kappa_ben"=9, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
-     "less_benth_14_f0"=     c("kappa" =2, "kappa_ben"=4, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
-     "small_benth_14_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=2.0, "temp" = 14.5, "fmort" = fish.mort.0),
-     "large_benth_14_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.8, "temp" = 14.5, "fmort" = fish.mort.0),
+  # ignore scenarios without fishing
+     # "baseline_12_f0"=       c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
+     # "more_plankt_12_f0"=    c("kappa" =2.6, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
+     # "less_plankt_12_f0"=    c("kappa" =1.5, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
+     # "small_plankt_12_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.18, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
+     # "large_plankt_12_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.12, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
+     # "more_benth_12_f0"=     c("kappa" =2, "kappa_ben"=9, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
+     # "less_benth_12_f0"=     c("kappa" =2, "kappa_ben"=4, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.0),
+     # "small_benth_12_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=2.0, "temp" = 12, "fmort" = fish.mort.0),
+     # "large_benth_12_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.8, "temp" = 12, "fmort" = fish.mort.0),
+     # 
+     # "baseline_14_f0"=       c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
+     # "more_plankt_14_f0"=    c("kappa" =2.6, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
+     # "less_plankt_14_f0"=    c("kappa" =1.5, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
+     # "small_plankt_14_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.18, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
+     # "large_plankt_14_f0"=   c("kappa" =2, "kappa_ben"=6, "lambda"=2.12, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
+     # "more_benth_14_f0"=     c("kappa" =2, "kappa_ben"=9, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
+     # "less_benth_14_f0"=     c("kappa" =2, "kappa_ben"=4, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 14.5, "fmort" = fish.mort.0),
+     # "small_benth_14_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=2.0, "temp" = 14.5, "fmort" = fish.mort.0),
+     # "large_benth_14_f0"=    c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.8, "temp" = 14.5, "fmort" = fish.mort.0),
     
     "baseline_12_f2"=       c("kappa" =2, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.v),
     "more_plankt_12_f2"=    c("kappa" =2.6, "kappa_ben"=6, "lambda"=2.15, "lambda_ben"=1.9, "temp" = 12, "fmort" = fish.mort.v), 
@@ -463,7 +464,8 @@ min_w_aa = 0.001
 
 #number of scenarios in a list
 scen_num <- length(lengths(prod_scen))
-n_spp <- length(params@species_params$species)
+# no_predator: there are 16 species left
+n_spp <- 16
 
 ## 200, 326 or 120 in these dataframes refers to the numbers of size groups 
 # in different arrays
@@ -486,10 +488,11 @@ CommSlopePlan_all <- array(data= NA, c(scen_num,3,dim(params28)[1]))
 CommSlopeHerb_all <- array(data= NA, c(scen_num,3,dim(params28)[1]))
 
 ## setup different species groups for community slope calcualtions
-fishonly <- as.character(mariaParams$species[c(1:15)])
+fishonly <- as.character(mariaParams$species[c(1:14)])
 bentiv <- as.character(mariaParams$species[which(mariaParams$funcgr == "omni")])
 plankt <- as.character(mariaParams$species[which(mariaParams$funcgr == "plankt")])
 predat <- as.character(mariaParams$species[which(mariaParams$funcgr == "predat")])
+predat <- predat[predat != "predator"]
 herbiv <- as.character(mariaParams$species[which(mariaParams$funcgr == "herbi")])
 
 
@@ -560,6 +563,11 @@ for (scen in 1:scen_num) {
         fish.mort <- as.numeric(prod_scen[[scen]][6:22])
         gear_params(params)$catchability <- fish.mort
         
+        # no_predator: remove predator
+        params <- removeSpecies(params, "predator")
+        params@other_params$MR$interaction <-
+            params@other_params$MR$interaction[c(1:14,16,17), ]
+        
         #run the model
         tmax <- 100 
         dt <- 0.2
@@ -577,11 +585,11 @@ for (scen in 1:scen_num) {
         biomass <- apply((getBiomass(tasm1)[c((tmax-29):tmax),]),2,mean)
         numbers <- apply((tasm1@n[c((tmax-29):tmax),,]),c(2,3),mean)
 
-        PropLarFish <- rep(NA,17)
-        MeanWgtMat <- rep(NA,17)
-        MeanWgtAbove5 <- rep(NA,17)
-        MeanWgtAbove10 <- rep(NA,17)
-        for (xx in 1:length(mariaParams$species)) {
+        PropLarFish <- rep(NA, n_spp)
+        MeanWgtMat <- rep(NA, n_spp)
+        MeanWgtAbove5 <- rep(NA, n_spp)
+        MeanWgtAbove10 <- rep(NA, n_spp)
+        for (xx in 1:n_spp) {
             PropLarFish[xx] <- mean(getProportionOfLargeFish(tasm1,species = xx, threshold_w = mariaParams$w_mat[xx])[(tmax-29):tmax])
             MeanWgtMat[xx]  <- mean(getMeanWeight(tasm1, min_w = mariaParams$w_mat[xx], max_w = mariaParams$w_inf[xx])[(tmax-29):tmax])
             MeanWgtAbove5[xx]  <- mean(getMeanWeight(tasm1, min_w = mariaParams$cm5[xx], max_w = mariaParams$w_inf[xx])[(tmax-29):tmax])
@@ -620,22 +628,22 @@ for (scen in 1:scen_num) {
 
 ### Save results ----
 
-# save(numb_all, file = "../outputs/numb.RData")
-# save(biom_all, file = "../outputs/biom.RData")
-# save(plankt_all, file = "outputs/plankt.RData")
-# save(bent_all, file = "outputs/bent.RData")
-# save(alg_all, file = "outputs/alg.RData")
-# save(PropLarFish_all, file = "outputs/PropLargFish.RData")
-# save(MeanWgtMat_all, file = "outputs/MeanWgtMat.RData")
-# save(MeanWgtAbove5_all, file = "outputs/MeanWgtAbove5.RData")
-# save(MeanWgtAbove10_all, file = "outputs/MeanWgtAbove10.RData")
-# save(Yield_all, file = "outputs/Yield.RData")
-# save(CommSlope_all, file = "outputs/CommSlope.RData")
-# save(CommSlopeFish_all, file = "outputs/CommSlopeFish.RData")
-# save(CommSlopeBent_all, file = "outputs/CommSlopeBent.RData")
-# save(CommSlopePlan_all, file = "outputs/CommSlopePlan.RData")
-# save(CommSlopeHerb_all, file = "outputs/CommSlopeHerb.RData")
-# save(CommSlopePred_all, file = "outputs/CommSlopePred.RData")
+save(numb_all, file = "outputs/numb.RData")
+save(biom_all, file = "outputs/biom.RData")
+save(plankt_all, file = "outputs/plankt.RData")
+save(bent_all, file = "outputs/bent.RData")
+save(alg_all, file = "outputs/alg.RData")
+save(PropLarFish_all, file = "outputs/PropLargFish.RData")
+save(MeanWgtMat_all, file = "outputs/MeanWgtMat.RData")
+save(MeanWgtAbove5_all, file = "outputs/MeanWgtAbove5.RData")
+save(MeanWgtAbove10_all, file = "outputs/MeanWgtAbove10.RData")
+save(Yield_all, file = "outputs/Yield.RData")
+save(CommSlope_all, file = "outputs/CommSlope.RData")
+save(CommSlopeFish_all, file = "outputs/CommSlopeFish.RData")
+save(CommSlopeBent_all, file = "outputs/CommSlopeBent.RData")
+save(CommSlopePlan_all, file = "outputs/CommSlopePlan.RData")
+save(CommSlopeHerb_all, file = "outputs/CommSlopeHerb.RData")
+save(CommSlopePred_all, file = "outputs/CommSlopePred.RData")
 
 #saveRDS(foodWebStats, file = "altRuns28/foodwebstats.rds")
 
