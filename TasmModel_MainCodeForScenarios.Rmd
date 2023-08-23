@@ -355,7 +355,7 @@ colnames(names)<-c("species", "plotName1", "plotName2")
 
 # empircal values 
 empir<-read.csv("plotData/ObservedBio_SizeChanges.csv")
-empir<-read.csv("plotData/ObservedBio_SizeChanges_CN.csv") # CN is the csv version
+#empir<-read.csv("plotData/ObservedBio_SizeChanges_CN.csv") # CN is the csv version
 
 # relativeBioLog and relative_size_change are the ones to use 
 empir<-empir %>% 
@@ -480,8 +480,8 @@ lim<-list(biom = c(-1.2, 1.2), yield = c(-1.2, 1.2), size = c(-1.2, 1.2), sizeMa
 
 ## define whether the plots are for main document (MS, kappa) or for supplementary information (SI, slope; including empirical values for changes in biomass and size)
 
-# plot_for_MS = "no"
-plot_for_MS = "yes"
+ plot_for_MS = "no"
+# plot_for_MS = "yes"
 
 plot_list<-list()
 data_list<-list()
@@ -553,7 +553,8 @@ for (i in 1:length(plot_data)){
     # filter(group_fishing == "fishing") %>% # decide on FISHING or NOT (not is in SI)
     # filter(group_fishing == "no fishing") %>%
     group_by(group_trait, scenario, funcgr, species, plotName1, plotName2) %>% 
-    summarise(mean = mean(value), sd = sd(value)) %>% 
+#    summarise(mean = mean(value), sd = sd(value)) %>% 
+    summarise(mean = mean(value), minQ = quantile(value, probs = 0.05, na.rm = T), maxQ = quantile(value, probs = 0.95, na.rm = T)) %>% 
     ungroup()
   
   # add empirical data to biomass and size plot
@@ -623,7 +624,7 @@ for (i in 1:length(plot_data)){
   ## CHANGE NAMES plotName1 
   plot<-ggplot(b, aes(x=mean, y=plotName2, group=scenario, color=scenario, shape = scenario))+
     geom_vline(xintercept = 0, linetype = "dashed")+
-    geom_errorbar(aes(xmin=mean-sd, xmax=mean+sd), width=0.5, position=pd)+
+    geom_errorbar(aes(xmin=minQ, xmax=maxQ), width=0.5, position=pd)+
     geom_point(position=pd, size=2)+
     scale_x_continuous(name = title[[i]], limits = lim[[i]]) +
     scale_y_discrete(name = NULL)+
@@ -735,9 +736,9 @@ if(plot_for_MS == "yes"){
 
 # FIG 3 in MS
 if(plot_for_MS == "yes"){
-  name = "/Users/camillan/Dropbox/TasmanianProductivityChange/REVISION/Fig3.pdf"
+  name = "/Users/astaa/SMART projektas GTC Dropbox/Asta Audzijonyte (Gamtos Tyrimu Centras)/sizeSpectrum_projects/TasmanianProductivityChange/REVISION2/Fig3rev2.pdf"
 }else if(plot_for_MS == "no"){
-    name ="/Users/camillan/Dropbox/TasmanianProductivityChange/REVISION/FigS7.pdf"}
+    name ="/Users/astaa/SMART projektas GTC Dropbox/Asta Audzijonyte (Gamtos Tyrimu Centras)/sizeSpectrum_projects/TasmanianProductivityChange/REVISION2/FigS7rev2.pdf"}
 
 pdf(name, height=13, width=10)
 plot_list$biom / plot_list$yield /plot_list$size +  plot_layout (nrow = 3)
