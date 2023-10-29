@@ -492,6 +492,7 @@ plankt <- as.character(mariaParams$species[which(mariaParams$funcgr == "plankt")
 predat <- as.character(mariaParams$species[which(mariaParams$funcgr == "predat")])
 herbiv <- as.character(mariaParams$species[which(mariaParams$funcgr == "herbi")])
 
+benthos_consumption <- array(data = 0, c(scen_num, dim(params28)[1]))
 
 ### All simulations ----
 
@@ -572,6 +573,20 @@ for (scen in 1:scen_num) {
         if (showplot == T) {
             plot(tasm1)
         }
+                
+        # Calculate consumption rate of benthic resource
+        # First calculate the per-capita rates in the final state
+        pfinal <- params
+        initialN(pfinal) <- finalN(tasm1)
+        initialNResource(pfinal) <- finalNResource(tasm1)
+        rfinal <- getRates(pfinal)
+        # Then multiply the per capita resource mortality by the final
+        # resource abundance and the mass and sum over all sizes to get
+        # the total consumption rate
+        benthos_consumption[scen, iter] <- 
+          sum(rfinal$resource_mort["bb", ] * finalNResource(tasm1)["bb", ] *
+                w_full(pfinal))
+        
         #get relative biomasses 
         #need to take an average of the last 30 years because it is oscillating
         biomass <- apply((getBiomass(tasm1)[c((tmax-29):tmax),]),2,mean)
@@ -636,9 +651,21 @@ for (scen in 1:scen_num) {
 # save(CommSlopePlan_all, file = "outputs/CommSlopePlan.RData")
 # save(CommSlopeHerb_all, file = "outputs/CommSlopeHerb.RData")
 # save(CommSlopePred_all, file = "outputs/CommSlopePred.RData")
+save(benthos_consumption, file = "outputs/benthos_consumption.RData")
 
 #saveRDS(foodWebStats, file = "altRuns28/foodwebstats.rds")
 
 
 ```
+
+Let's look at the change in consumption rates of benthic resource. We average
+this over all parameter combinations.
+```{r}
+ratio = rep(0, 6)
+for (i in 1:6) {
+  ratio[i] <- mean(benthos_consumption[i, ] / benthos_consumption[1, ])
+}
+round(ratio, 2)
+```
+
 
