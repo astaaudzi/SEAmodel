@@ -661,9 +661,13 @@ save(benthos_consumption, file = "outputs/benthos_consumption.RData")
 Let's look at the change in consumption rates of benthic resource. We average
 this over all parameter combinations.
 ```{r}
+# Choose the scenarios chosen in the primer
+scen_ben <- c(19, 25, 34, 24, 33, 28)
+
 ratio = rep(0, 6)
 for (i in 1:6) {
-  ratio[i] <- mean(benthos_consumption[i, ] / benthos_consumption[1, ])
+  ratio[i] <- mean(benthos_consumption[scen_ben[i], ] / 
+                     benthos_consumption[scen_ben[1], ])
 }
 round(ratio, 2)
 ```
